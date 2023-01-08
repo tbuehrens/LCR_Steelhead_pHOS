@@ -1,0 +1,298 @@
+---
+title: Estimates of Lower Columbia winter steelhead pHOS based on spawning ground surveys 
+author: Thomas Buehrens (tbuehrens@dfw.wa.gov) & Jeremy Wilson (Jeremy.Wilson@dfw.wa.gov)
+output:
+  html_document:
+    code_folding: hide
+    fig_caption: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../results") })
+---
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"https://privatelands.wdfw.wa.gov/wdfwlogo_clrnotxt.png"\" style=\"float: right;width: 150px;\"/>')
+   });
+</script>
+
+***
+
+Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
+
+***
+
+## Overview
+This markdown documents the estimation of pHOS for Lower Columbia winter steelhead populations based on spawning ground surveys. It is only completed for populations below dams and excludes the Lower Cowlitz & NF Lewis for which estimates are developed as part of other reporting processes. Estimates for Kalama and NF Toutle/Mainstem Toutle Populations are incomplete here because a portion of these populations is located above dams so these estimates must be combined with the above dam estimates for those populations. Summer steelhead pHOS estimates are also excluded because those are available from snorkel surveys. Three models are used to estimate pHOS: 1) method of moments where pHOS is calculated as (HOS/(HOS + NOS)) annually for each population in years data are available, 2) a multivariate state-space model fit to the count data using a logit link function and a binomial response using STAN [**rstan**](https://mc-stan.org/users/interfaces/rstan), 3) a Generalize Additive Model fit to the count data using a logit link function and a binomial response where a thin plate spline is fit independently to each population's data using the R package [**mgcv**](https://cran.r-project.org/web/packages/mgcv/mgcv.pdf). The model used to fit the logit-normal random walk is printed below in the appendix.
+
+```{r set_options, echo = TRUE, message = FALSE}
+options(width = 100)
+knitr::opts_chunk$set(message = FALSE)
+set.seed(123)
+```
+
+
+<!-- We also need a couple of helper functions which we will define -->
+```{r load_funcs, message = FALSE, warning = FALSE,results = "hide"}
+#function to add prediction to model output
+add_predictions <- function (data, model, var = "pred", ...) {
+     fit <- as_tibble(stats::predict(model, data, ...))
+     names(fit)[1] <- var  
+     bind_cols(data, fit)
+}
+
+#function to install or load packages
+install_or_load_pack <- function(pack){
+  create.pkg <- pack[!(pack %in% installed.packages()[, "Package"])]
+  if (length(create.pkg))
+    install.packages(create.pkg, dependencies = TRUE,repos = "http://cran.us.r-project.org")
+  sapply(pack, require, character.only = TRUE)
+}
+
+#function for inverse logit transform.
+ilogit<-function(x){exp(x)/(1+exp(x))}
+```
+
+<!-- Here we will load & install packages we need to use (needs internet connection if packages not already installed) -->
+```{r load_packages, message = FALSE, warning = FALSE,results = "hide"}
+packages_list<-c("dataRetrieval"
+                 ,"scales"
+                 ,"RColorBrewer"
+                 ,'viridis'
+                 ,'ggsci'
+                 ,'tidyverse'
+                 ,'dplyr'
+                 ,'readr'
+                 ,'ggplot2'
+                 ,'lubridate'
+                 ,"mgcv"
+                 ,"modelr"
+                 ,"brms"
+                 ,"kableExtra"
+                 ,"rstan"
+                 ,"reshape2"
+                 )
+install_or_load_pack(pack = packages_list)
+```
+
+## User inputs
+
+```{r user inputs, message = FALSE, warning = FALSE,results = "hide"}
+include_holders = T
+```
+
+
+## Get Raw Data
+In this section, data used in the analysis is loaded and prepared for analysis
+```{r get_data, message=FALSE, warning=FALSE, results="show"}
+#-------------------------------------------------------------------------------
+# Call in data and reorganize
+#-------------------------------------------------------------------------------
+#1 all spawning ground survey data (spring and fall & summer)
+#2 includes lives & deads
+#2 spawner vs. holder (left in holders)
+#3 below filtered out cowlitz (already estimates, filtered out non spawning months)
+#4 Maybe filter pre-2014 ish when we started making live fish calls???? (no, some carc data)
+
+#Step 1 - Call in DF from csv
+DF<-read_csv(here::here("data/STH_PHOS_TWS_12.09.22.csv"))%>%
+     as_tibble()
+
+if(include_holders == F){
+  DF<-DF%>%
+       dplyr::filter(is.na(Live_Type) | Live_Type !="Holder") #can exclude holders (because could include live fish prior to harvest or recruitment to hatchery)...that said doesn't seem to change results 
+  holders <-"no_holders"
+}else{
+  holders <-"with_holders"   
+}  
+DF<-DF%>%
+     dplyr::filter(Mark%in%c("LV","AD+LV","AD+RV","UM","AD"))%>%
+     mutate(Mark = ifelse(Mark %in% c("AD","LV","AD+LV","AD+RV"),"HOS","NOS"))%>%
+     dplyr::filter(Population!="Cedar",
+                   Population!="Delameter_Above Weir",
+                   Population!="Salmon Creek",
+                   Population!="White Salmon",
+                   Population!="Olequa_Above Weir",
+                   Population!="Ostrander_Above Weir",
+                   Population!="Mainstem Columbia",
+                   Population!="Lower Cowlitz",
+                   Population!="")%>%
+     mutate(Population = str_replace(Population, "Kalama","Kalama_below_KFH"),
+            Population = str_replace(Population, "Green","NF_Toutle_Green_only")
+     )%>%
+     dplyr::mutate(Date=mdy(Date),
+                   Year=year(Date),
+                   month= month(Date),
+                   Spawn_Year= ifelse(month < 12, Year, Year + 1)
+     )%>%
+     dplyr::filter(month >11 | month <7)%>% #exclude data from 6/30 -12/1 each year
+     dplyr::filter(Spawn_Year!="2023")%>% #not a complete year yet
+     dplyr::group_by(Spawn_Year,Population,Mark)%>%
+     dplyr::summarise(Count = sum(Count))%>%
+     pivot_wider(names_from = Mark, values_from = Count,values_fill = 0)%>%
+     mutate(pHOS_mom = HOS/(HOS+NOS),Population=factor(Population)) # calculate a "method of moments" estimate
+```
+
+
+## Analysis & Results
+In this section we estimate annual pHOS by population with the clip status data using Generalized Additive Models and then present the results in graphical and tablular form.
+```{r Analysis_v1, message=FALSE, warning=FALSE, results="show"}
+stan_dat<-list(
+     T = length(min(DF$Spawn_Year):max(DF$Spawn_Year)),
+     T_forward = 0,
+     T_backward = 0,
+     P = length(unique(DF$Population)),
+     n = dim(DF)[1],
+     HOS_obs = DF$HOS,
+     NOS_obs = DF$NOS,
+     pop_obs = as.numeric(DF$Population),
+     year_obs = DF$Spawn_Year-min(DF$Spawn_Year) + 1
+)
+if(!file.exists(here::here("code/stan_model.rds"))){
+     model<-stan_model(here::here("code/binomial_ss_random_walk_model_mv.stan"))
+     saveRDS(model,here::here("code/stan_model.rds"))
+}else{
+     model<-readRDS(here::here("code/stan_model.rds"))
+}
+if(!file.exists(here::here(paste0("results/stan_fit_",holders,".rds")))){
+m1_stan<-sampling(
+     object = model,
+     data = stan_dat,
+     chains = 4,
+     cores = 4,
+     iter = 2000,
+     warmup = 1000,
+     thin = 1
+)
+saveRDS(m1_stan,here::here(paste0("results/stan_fit_",holders,".rds")))
+}else{
+     m1_stan<-readRDS(here::here(paste0("results/stan_fit_",holders,".rds")))
+}
+
+
+results<-extract(m1_stan)
+DF<-data.frame(reshape2::melt(results$p_all))%>%
+     as_tibble()%>%
+     dplyr::rename(Spawn_Year = Var2,
+               Pop_ind = Var3
+               )%>%
+     mutate(Spawn_Year = Spawn_Year + min(DF$Spawn_Year) - 1)%>%
+     left_join(DF%>%
+                    mutate(Pop_ind = as.numeric(Population))%>%
+                    group_by(Population)%>%
+                    summarise(Population = first(Population), Pop_ind = first(Pop_ind))
+                    )%>%
+     dplyr::select(-Pop_ind)%>%
+     group_by(Population,Spawn_Year)%>%
+     summarise(value = quantile(value, c(0.025,0.5,0.975)), q = c(0.025, 0.5,0.975))%>%
+     pivot_wider(names_from = q,values_from = value)%>%
+     dplyr::rename(pHOS_ss_rw = `0.5`,
+                   pHOS_ss_rw_lower = `0.025`,
+                   pHOS_ss_rw_upper = `0.975`
+                   )%>%
+     left_join(DF,by=c("Spawn_Year","Population"))%>%
+     ungroup()%>%
+     arrange(Population, Spawn_Year)
+```
+
+```{r Predictions_ss_rw, message=FALSE, warning=FALSE, results="show"}
+p1<-ggplot(DF,aes(x=Spawn_Year,y=pHOS_ss_rw,group=Population))+
+     geom_ribbon(aes(ymin=pHOS_ss_rw_lower,ymax=pHOS_ss_rw_upper),color=NA,fill="black",alpha=0.5)+
+     geom_line(size=0.6)+
+     geom_point(aes(y=pHOS_mom,size=HOS+NOS))+
+     scale_size(name   = "Sample Size",
+                breaks = c(2,4,8,16,32,64),
+                labels = c(2,4,8,16,32,64)
+                )+
+     facet_wrap(~Population,ncol=2)+
+     ylab("Proportion of Hatchery-Origin Spawners")+
+     xlab("Spawn Year")+
+     theme_bw()+
+     theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())
+```
+
+```{r plot_ss_rw, message=FALSE, warning=FALSE, results="show",fig.cap="Figure 1. Estimates of pHOS for Lower Columbia Winter Steelhead by population and year. Method of moment estimates (HOS/(HOS + NOS)) are shown as points where size corresponds to sample size. Estimates from the state-space multivariate random walk model using a logit link with a binomial response are shown as a posterior median (line) and 95% CI (shading)."}
+print(p1)
+```
+
+
+```{r Analysis_v2, message=FALSE, warning=FALSE, results="show"}
+m1<-gam(cbind(HOS,NOS) ~ s(Spawn_Year,by=Population,k=4), family = "binomial",data=DF)
+
+DF<-expand.grid("Population" = unique(DF$Population),
+                    "Spawn_Year" = unique(DF$Spawn_Year)
+                    )%>%
+     as_tibble()%>%
+     add_predictions(m1,type="link", var ="pHOS_gam",se.fit=T)%>%
+     mutate(pHOS_gam_lower = ilogit(pHOS_gam - 1.96 * se.fit),
+            pHOS_gam_upper =ilogit(pHOS_gam + 1.96 * se.fit),
+            pHOS_gam=ilogit(pHOS_gam)
+            )%>%
+     left_join(DF,by=c("Spawn_Year","Population"))%>%
+     ungroup()%>%
+     arrange(Population, Spawn_Year)
+```
+
+
+```{r Predictions_gam, message=FALSE, warning=FALSE, results="show"}
+p2<-ggplot(DF,aes(x=Spawn_Year,y=pHOS_gam,group=Population))+
+     geom_ribbon(aes(ymin=pHOS_gam_lower,ymax=pHOS_gam_upper),color=NA,fill="black",alpha=0.5)+
+     geom_line(size=0.6)+
+     geom_point(aes(y=pHOS_mom,size=HOS+NOS))+
+     scale_size(name   = "Sample Size",
+                breaks = c(2,4,8,16,32,64),
+                labels = c(2,4,8,16,32,64)
+                )+
+     facet_wrap(~Population,ncol=2)+
+     ylab("Proportion of Hatchery-Origin Spawners")+
+     xlab("Spawn Year")+
+     theme_bw()+
+     theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())
+```
+
+```{r plot_gam, message=FALSE, warning=FALSE, results="show",fig.cap="Figure 2. Estimates of pHOS for Lower Columbia Winter Steelhead by population and year. Method of moment estimates (HOS/(HOS + NOS)) are shown as points where size corresponds to sample size. GAM estimates are shown as an MLE (line) and 95% CI (shading)."}
+print(p2)
+```
+
+```{r tables, message=FALSE, warning=FALSE, results="show"}
+DF2<-DF%>%
+     filter(Spawn_Year>2017)%>%
+     group_by(Population)%>%
+     summarise(mean_pHOS_ss_rw = scales::percent(mean(pHOS_ss_rw),accuracy = 0.1),
+               mean_pHOS_mom = scales::percent(mean(pHOS_mom,na.rm=T),accuracy = 0.1),
+               mean_pHOS_gam = scales::percent(mean(pHOS_gam),accuracy = 0.1))
+               #min= scales::percent(min(pHOS_gam),accuracy = 0.1),
+               #max=scales::percent(max(pHOS_gam),accuracy = 0.1))%>%
+DF2%>%     
+     kbl(caption = 'Table 1. 5-year Mean pHOS by Population. Three estimates are provided: 1) results from the state space random walk model ("mean_pHOS_ss_rw"), 2) results from the GAM analysis ("mean_pHOS_gam"), and 3) 5 year means based on method of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))',digits =3)%>%
+     kable_classic(full_width = F, html_font = "Cambria")
+
+write.csv(DF2,here::here(paste0("results/5_year_mean_pHOS_",holders,".csv")),row.names = F) 
+
+DF3<-DF%>%
+     mutate(pHOS_ss_rw = scales::percent(pHOS_ss_rw,accuracy = 0.1,na.rm=T),
+            pHOS_ss_rw_lower = scales::percent(pHOS_ss_rw_lower,accuracy = 0.1,na.rm=T),
+            pHOS_ss_rw_upper = scales::percent(pHOS_ss_rw_upper,accuracy = 0.1,na.rm=T),
+            pHOS_gam = scales::percent(pHOS_gam,accuracy = 0.1,na.rm=T),
+            pHOS_gam_lower = scales::percent(pHOS_gam_lower,accuracy = 0.1,na.rm=T),
+            pHOS_gam_upper = scales::percent(pHOS_gam_upper,accuracy = 0.1,na.rm=T),
+            pHOS_mom = scales::percent(pHOS_mom,accuracy = 0.1,na.rm=T)
+            )%>%
+     dplyr::select(-se.fit)
+
+DF3%>%
+     kbl(caption = 'Table 2. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) 5 year means based on method of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))' ,digits =3)%>%
+     kable_classic(full_width = F, html_font = "Cambria")
+write.csv(DF3,here::here(paste0("results/summarized_data_and_annual_pHOS_ests_",holders,".csv")),row.names = F)
+```
+## Appendix
+Appendix 1: STAN code used to fit the multivariate state space random walk with logit link using a binomial response to the HOS and NOS data from each population to estimate pHOS.
+```{r appendix, message=FALSE, warning=FALSE, results="show"}
+noquote(read_lines(here::here("code/binomial_ss_random_walk_model_mv.stan")))
+```
