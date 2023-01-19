@@ -1,0 +1,172 @@
+---
+title: Lower Columbia Earliest Steelhead Survey Dates Query
+author: Thomas Buehrens (thomas.buehrens@dfw.wa.gov) & Steve VanderPloeg (steven.vanderploeg@dfw.wa.gov)
+output:
+  html_document:
+    code_folding: hide
+    fig_caption: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../results") })
+---
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"https://privatelands.wdfw.wa.gov/wdfwlogo_clrnotxt.png"\" style=\"float: right;width: 150px;\"/>')
+   });
+</script>
+
+***
+
+Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
+
+***
+
+
+```{r set_options, echo = TRUE, message = FALSE}
+options(width = 100)
+knitr::opts_chunk$set(message = FALSE)
+set.seed(123)
+```
+
+
+<!-- We also need a couple of helper functions which we will define -->
+```{r load_funcs, message = FALSE, warning = FALSE,results = "hide"}
+#function
+select_table_PostgreSQL<-function(database_args,SQL){
+  con <- DBI::dbConnect(
+    odbc::odbc(),
+    Driver = database_args$Driver,
+    Server = database_args$Server,
+    Database = database_args$Database,
+    Port = database_args$Port,
+    UID = database_args$UID,
+    PWD = database_args$PWD,
+    Trusted_Connection = database_args$Trusted_Connection
+  )
+  dat<- data.frame(DBI::dbGetQuery(con, SQL))
+  DBI::dbDisconnect(con)
+  return(dat)
+}
+
+#function to add prediction to model output
+add_predictions <- function (data, model, var = "pred", ...) {
+     fit <- as_tibble(stats::predict(model, data, ...))
+     names(fit)[1] <- var  
+     bind_cols(data, fit)
+}
+
+#function to install or load packages
+install_or_load_pack <- function(pack){
+  create.pkg <- pack[!(pack %in% installed.packages()[, "Package"])]
+  if (length(create.pkg))
+    install.packages(create.pkg, dependencies = TRUE,repos = "http://cran.us.r-project.org")
+  sapply(pack, require, character.only = TRUE)
+}
+
+#function for inverse logit transform.
+ilogit<-function(x){exp(x)/(1+exp(x))}
+```
+
+<!-- Here we will load & install packages we need to use (needs internet connection if packages not already installed) -->
+```{r load_packages, message = FALSE, warning = FALSE,results = "hide"}
+packages_list<-c("dataRetrieval"
+                 ,"scales"
+                 ,"RColorBrewer"
+                 ,'viridis'
+                 ,'ggsci'
+                 ,'tidyverse'
+                 ,'dplyr'
+                 ,'readr'
+                 ,'ggplot2'
+                 ,'lubridate'
+                 ,"mgcv"
+                 ,"modelr"
+                 ,"brms"
+                 ,"kableExtra"
+                 ,"rstan"
+                 ,"reshape2"
+                 ,"DBI"
+                 )
+install_or_load_pack(pack = packages_list)
+```
+
+
+## Steelhead Survey Earliest Dates
+In this section, data used in the analysis is loaded and prepared for analysis
+```{r get_data, message=FALSE, warning=FALSE, results="show"}
+database_args<-list(
+  Driver = "PostgreSQL Unicode",
+  Server = Sys.getenv("POSTGRES_TWS_IP"),
+  Database = "FISH",
+  Port = 5433,
+  UID = Sys.getenv("POSTGRES_TWS_UN"),
+  PWD = Sys.getenv("POSTGRES_TWS_PW"),
+  Trusted_Connection = "True"
+)
+
+SQL1<-'
+SELECT tws.sgs_reaches_lut.mgmtmethodsbasin AS basin, tws.header.return_yr AS return_year,tws.header.survey_date AS survey_date
+FROM tws.header 
+INNER JOIN tws.sgs_reaches_lut 
+ON tws.header.stream_reach_id = tws.sgs_reaches_lut.stream_reach_id
+ORDER BY basin, return_yr, survey_date;'
+
+dat<-select_table_PostgreSQL(database_args=database_args,SQL=SQL1)%>%
+  as_tibble()%>%
+  mutate(survey_season = ifelse(month(survey_date) < 7 & return_year == year(survey_date),"Spring","Fall"))%>%
+  filter(survey_season == "Spring")%>%
+  group_by(return_year,basin)%>%
+  summarise(first_survey_date=min(survey_date))%>%
+  arrange(basin,return_year)%>%
+  mutate(first_survey_yday=yday(first_survey_date))
+  
+
+ggplot(dat,aes(y=first_survey_yday,x=return_year,color=basin))+
+  geom_point()+
+  geom_line()+
+  facet_wrap(~basin)+
+  scale_y_continuous(limits=c(14,100),labels = function(y) format(as.Date(as.character(y), "%j"), "%B-%d"))+
+  geom_hline(yintercept=yday("2022-02-14"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+dat%>%     
+    kbl(caption = 'First survey by year and management method basin only including including all surveys before july where return year = year of survey date ',digits =3)%>%
+    kable_classic(full_width = F, html_font = "Cambria")
+
+SQL2<-'
+SELECT tws.sgs_reaches_lut.mgmtmethodsbasin AS basin, tws.header.return_yr AS return_year,tws.header.survey_date AS survey_date, tws.sgs_reaches_lut.stream_reach_code_spring AS stream_reach_code_spring 
+FROM tws.header 
+INNER JOIN tws.sgs_reaches_lut 
+ON tws.header.stream_reach_id = tws.sgs_reaches_lut.stream_reach_id
+ORDER BY basin, return_yr, survey_date;'
+
+dat2<-select_table_PostgreSQL(database_args=database_args,SQL=SQL2)%>%
+  as_tibble()%>%
+  #mutate(survey_season = ifelse(month(survey_date) < 7 & return_year == year(survey_date),"Spring","Fall"))%>%
+  #filter(survey_season == "Spring")%>%
+  filter(!is.na(stream_reach_code_spring))%>%
+  group_by(return_year,basin)%>%
+  summarise(first_survey_date=min(survey_date))%>%
+  arrange(basin,return_year)%>%
+  mutate(first_survey_yday=yday(first_survey_date))
+  
+ggplot(dat2,aes(y=first_survey_yday,x=return_year,color=basin))+
+  geom_point()+
+  geom_line()+
+  facet_wrap(~basin)+
+  scale_y_continuous(limits=c(14,100),labels = function(y) format(as.Date(as.character(y), "%j"), "%B-%d"))+
+  geom_hline(yintercept=yday("2022-02-14"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+dat2%>%     
+    kbl(caption = 'First survey by year and management method basin only including reaches that were not null for "stream_reach_code_spring" ',digits =3)%>%
+    kable_classic(full_width = F, html_font = "Cambria")
+```
+

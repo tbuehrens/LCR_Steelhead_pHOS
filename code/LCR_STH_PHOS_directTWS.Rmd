@@ -1,6 +1,6 @@
 ---
 title: Estimates of Lower Columbia winter steelhead pHOS based on spawning ground surveys 
-author: Thomas Buehrens (tbuehrens@dfw.wa.gov) & Jeremy Wilson (Jeremy.Wilson@dfw.wa.gov)
+author: Thomas Buehrens (thomas.buehrens@dfw.wa.gov) & Jeremy Wilson (Jeremy.Wilson@dfw.wa.gov)
 output:
   html_document:
     code_folding: hide
