@@ -1,6 +1,6 @@
 ---
 title: Lower Columbia Earliest Steelhead Survey Dates Query
-author: Thomas Buehrens (thomas.buehrens@dfw.wa.gov) & Steve VanderPloeg (steven.vanderploeg@dfw.wa.gov)
+author: Thomas Buehrens (thomas.buehrens@dfw.wa.gov) & Steve VanderPloeg (steven.vanderploeg@dfw.wa.gov) 
 output:
   html_document:
     code_folding: hide
