@@ -123,9 +123,13 @@ dat<-select_table_PostgreSQL(database_args=database_args,SQL=SQL1)%>%
   mutate(survey_season = ifelse(month(survey_date) < 7 & return_year == year(survey_date),"Spring","Fall"))%>%
   filter(survey_season == "Spring")%>%
   group_by(return_year,basin)%>%
-  summarise(first_survey_date=min(survey_date))%>%
+  summarise(first_survey_date=min(survey_date),
+            last_survey_date=max(survey_date)
+            )%>%
   arrange(basin,return_year)%>%
-  mutate(first_survey_yday=yday(first_survey_date))
+  mutate(first_survey_yday=yday(first_survey_date),
+         last_survey_yday=yday(last_survey_date)
+         )
   
 
 ggplot(dat,aes(y=first_survey_yday,x=return_year,color=basin))+
@@ -133,6 +137,13 @@ ggplot(dat,aes(y=first_survey_yday,x=return_year,color=basin))+
   geom_line()+
   facet_wrap(~basin)+
   scale_y_continuous(limits=c(14,100),labels = function(y) format(as.Date(as.character(y), "%j"), "%B-%d"))+
+  geom_hline(yintercept=yday("2022-02-14"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+ggplot(dat,aes(y=first_survey_yday,x=return_year,color=basin))+
+  geom_segment(aes(yend=last_survey_yday,xend=return_year))+
+  facet_wrap(~basin)+
+  scale_y_continuous(labels = function(y) format(as.Date(as.character(y), "%j"), "%B-%d"))+
   geom_hline(yintercept=yday("2022-02-14"))+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
@@ -153,15 +164,26 @@ dat2<-select_table_PostgreSQL(database_args=database_args,SQL=SQL2)%>%
   #filter(survey_season == "Spring")%>%
   filter(!is.na(stream_reach_code_spring))%>%
   group_by(return_year,basin)%>%
-  summarise(first_survey_date=min(survey_date))%>%
+  summarise(first_survey_date=min(survey_date),
+            last_survey_date=max(survey_date)
+            )%>%
   arrange(basin,return_year)%>%
-  mutate(first_survey_yday=yday(first_survey_date))
+  mutate(first_survey_yday=yday(first_survey_date),
+         last_survey_yday=yday(last_survey_date)
+         )
   
 ggplot(dat2,aes(y=first_survey_yday,x=return_year,color=basin))+
   geom_point()+
   geom_line()+
   facet_wrap(~basin)+
   scale_y_continuous(limits=c(14,100),labels = function(y) format(as.Date(as.character(y), "%j"), "%B-%d"))+
+  geom_hline(yintercept=yday("2022-02-14"))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+ggplot(dat,aes(y=first_survey_yday,x=return_year,color=basin))+
+  geom_segment(aes(yend=last_survey_yday,xend=return_year))+
+  facet_wrap(~basin)+
+  scale_y_continuous(labels = function(y) format(as.Date(as.character(y), "%j"), "%B-%d"))+
   geom_hline(yintercept=yday("2022-02-14"))+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 

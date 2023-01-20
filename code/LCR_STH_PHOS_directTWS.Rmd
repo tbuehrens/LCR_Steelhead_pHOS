@@ -1,6 +1,6 @@
 ---
 title: Estimates of Lower Columbia winter steelhead pHOS based on spawning ground surveys 
-author: Thomas Buehrens (thomas.buehrens@dfw.wa.gov) & Jeremy Wilson (Jeremy.Wilson@dfw.wa.gov)
+author: Thomas Buehrens (thomas.buehrens@dfw.wa.gov) & Jeremy Wilson (Jeremy.Wilson@dfw.wa.gov) & Steve Gray (steven.gray@dfw.wa.gov)
 output:
   html_document:
     code_folding: hide
@@ -383,7 +383,7 @@ DF3<-DF%>%
      dplyr::select(-se.fit)
 
 DF3%>%
-     kbl(caption = 'Table 2. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) 5 year means based on method of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))' ,digits =3)%>%
+     kbl(caption = 'Table 2. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))' ,digits =3)%>%
      kable_classic(full_width = F, html_font = "Cambria")
 write.csv(DF3,here::here(paste0("results/summarized_data_and_annual_pHOS_ests_",holders,".csv")),row.names = F)
 ```
