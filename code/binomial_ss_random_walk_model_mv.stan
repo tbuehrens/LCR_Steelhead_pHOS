@@ -54,9 +54,10 @@ generated quantities{
   matrix[P,P] Omega = multiply_lower_tri_self_transpose(L);
   matrix[P,P] Sigma = quad_form_diag(Omega, sigma_rn);
   matrix[T + T_forward + T_backward,P] p_all;
+  matrix[T_backward + T + T_forward,P] eps_all;
   p_all[T_backward + 1:T_backward + T,1:P] = p;
-  matrix[T_forward,P] eps_pred_forward;
-  matrix[T_backward,P] eps_pred_backward;
+  eps_all[T_backward + 1,1:P] = rep_row_vector(0,P);
+  eps_all[T_backward + 2:T_backward + T,1:P] = eps;
   for(t in (T_backward + T + 1):(T_backward + T + T_forward)){
     for(i in 1:P){
       eps_pred_forward[t,i] = normal_rng(0,1);
