@@ -1,0 +1,168 @@
+---
+title: Summarizing Lower Columbia UM Steelhead Scales that have been aged in TWS
+author: Thomas Buehrens (thomas.buehrens@dfw.wa.gov) & Steve Gray (steven.gray@dfw.wa.gov)
+output:
+  html_document:
+    code_folding: hide
+    fig_caption: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "../results") })
+---
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"https://privatelands.wdfw.wa.gov/wdfwlogo_clrnotxt.png"\" style=\"float: right;width: 150px;\"/>')
+   });
+</script>
+
+***
+
+Last Updated `r format(Sys.time(), '%m/%d/%Y')`.
+
+***
+
+## Overview
+Summarizing available already-aged and entered UM Steelhead Scales from Stream Surveys and Point Locations (Weirs, Traps)
+
+```{r set_options, echo = TRUE, message = FALSE}
+options(width = 100)
+knitr::opts_chunk$set(message = FALSE)
+set.seed(123)
+```
+
+
+<!-- We also need a couple of helper functions which we will define -->
+```{r load_funcs, message = FALSE, warning = FALSE,results = "hide"}
+#function
+select_table_PostgreSQL<-function(database_args,SQL){
+  con <- DBI::dbConnect(
+    odbc::odbc(),
+    Driver = database_args$Driver,
+    Server = database_args$Server,
+    Database = database_args$Database,
+    Port = database_args$Port,
+    UID = database_args$UID,
+    PWD = database_args$PWD,
+    Trusted_Connection = database_args$Trusted_Connection
+  )
+  dat<- data.frame(DBI::dbGetQuery(con, SQL))
+  DBI::dbDisconnect(con)
+  return(dat)
+}
+
+#function to add prediction to model output
+add_predictions <- function (data, model, var = "pred", ...) {
+     fit <- as_tibble(stats::predict(model, data, ...))
+     names(fit)[1] <- var  
+     bind_cols(data, fit)
+}
+
+#function to install or load packages
+install_or_load_pack <- function(pack){
+  create.pkg <- pack[!(pack %in% installed.packages()[, "Package"])]
+  if (length(create.pkg))
+    install.packages(create.pkg, dependencies = TRUE,repos = "http://cran.us.r-project.org")
+  sapply(pack, require, character.only = TRUE)
+}
+
+#function for inverse logit transform.
+ilogit<-function(x){exp(x)/(1+exp(x))}
+```
+
+<!-- Here we will load & install packages we need to use (needs internet connection if packages not already installed) -->
+```{r load_packages, message = FALSE, warning = FALSE,results = "hide"}
+packages_list<-c("dataRetrieval"
+                 ,"scales"
+                 ,"RColorBrewer"
+                 ,'viridis'
+                 ,'ggsci'
+                 ,'tidyverse'
+                 ,'dplyr'
+                 ,'readr'
+                 ,'ggplot2'
+                 ,'lubridate'
+                 ,"mgcv"
+                 ,"modelr"
+                 ,"brms"
+                 ,"kableExtra"
+                 ,"rstan"
+                 ,"reshape2"
+                 ,"DBI"
+                 )
+install_or_load_pack(pack = packages_list)
+```
+
+## User inputs
+
+```{r user inputs, message = FALSE, warning = FALSE,results = "hide"}
+include_holders = T
+```
+
+
+## Get Raw Data
+In this section, data used in the analysis is loaded and prepared for analysis
+```{r get_data, message=FALSE, warning=FALSE, results="show"}
+database_args<-list(
+  Driver = "PostgreSQL Unicode",
+  Server = Sys.getenv("POSTGRES_TWS_IP"),
+  Database = "FISH",
+  Port = 5433,
+  UID = Sys.getenv("POSTGRES_TWS_UN"),
+  PWD = Sys.getenv("POSTGRES_TWS_PW"),
+  Trusted_Connection = "True"
+)
+
+SQL1<-
+"SELECT tws.HEADER.Survey_Date, tws.MARK_TYPE_LUT.MarkCode, tws.FISH_STATUS_LUT.Description,tws.POINT_LOCATIONS_LUT.short_name, tws.SCALECARD_FRONT.Scale_Age_Code, tws.AGE_LUT.age_code,tws.POINT_LOCATIONS_LUT.stream_lut_id,tws.SGS_REACHES_LUT.stream_lut_id
+FROM tws.STREAM_NAME_LUT RIGHT JOIN ((tws.SGS_REACHES_LUT RIGHT JOIN (((tws.RUN_LUT INNER JOIN (((tws.HEADER INNER JOIN tws.SCALECARD_BACK ON tws.HEADER.HEADER_Id = tws.SCALECARD_BACK.HEADER_Id) INNER JOIN tws.SCALECARD_FRONT ON tws.SCALECARD_BACK.SCALE_CARD_Id = tws.SCALECARD_FRONT.SCALE_CARD_Id) INNER JOIN tws.SPECIES_LUT ON tws.SCALECARD_BACK.SPECIES_Id = tws.SPECIES_LUT.species_lut_id) ON tws.RUN_LUT.RUN_LUT_Id = tws.SCALECARD_BACK.RUN_LUT_Id) INNER JOIN tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id) INNER JOIN tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id) ON tws.SGS_REACHES_LUT.stream_reach_id = tws.HEADER.STREAM_REACH_Id) LEFT JOIN tws.POINT_LOCATIONS_LUT ON tws.HEADER.POINT_LOCATIONS_LUT_Id = tws.POINT_LOCATIONS_LUT.point_locations_lut_id) ON tws.STREAM_NAME_LUT.stream_lut_id = tws.POINT_LOCATIONS_LUT.stream_lut_id
+LEFT JOIN tws.AGE_LUT ON tws.SCALECARD_FRONT.Scale_Age_Code = tws.AGE_LUT.age_lut_id
+WHERE (((tws.MARK_TYPE_LUT.MarkCode)='UM') AND ((tws.SPECIES_LUT.species)='Steelhead') AND ((tws.SCALECARD_FRONT.Scale_Age_Code) Is Not Null))
+ORDER BY tws.MARK_TYPE_LUT.MarkCode DESC , tws.FISH_STATUS_LUT.Description;"
+
+
+DF<-select_table_PostgreSQL(database_args=database_args,SQL=SQL1)%>%
+  as_tibble()
+
+
+SQL2<-
+"SELECT
+  tws.SGS_REACHES_LUT.stream_lut_id,
+  tws.SGS_REACHES_LUT.stream_name,
+  tws.SGS_REACHES_LUT.mgmtmethodsbasin
+FROM
+  tws.SGS_REACHES_LUT;
+"
+
+DF2<-select_table_PostgreSQL(database_args=database_args,SQL=SQL2)%>%
+  as_tibble()%>%
+  group_by(stream_lut_id,stream_name)%>%
+  summarise(mgmtmethodsbasin=first(mgmtmethodsbasin))
+
+DF3<-DF%>%
+  mutate(data_type = ifelse(!is.na(stream_lut_id),"survey","weir_trap"),
+         stream_lut_id = ifelse(data_type == "survey",stream_lut_id,stream_lut_id.1),
+         year = year(survey_date)
+         )%>%
+  dplyr::select(-c("stream_lut_id.1"))%>%  
+  left_join(DF2)
+
+
+write.csv(DF3,here::here("results/Raw_UM_Steelhead_Scale_data.csv"),row.names = F)
+
+DF3%>%
+  group_by(year,mgmtmethodsbasin)%>%
+  summarise(n=n())%>%
+  pivot_wider(values_from = n,names_from = year)%>%
+  kbl(caption = 'Table 1. Sample sizes of aged and entered UM steelhead scales by calendar year and management methods basin in TWS',digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+  
+
+
+```
