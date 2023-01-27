@@ -99,13 +99,6 @@ packages_list<-c("dataRetrieval"
 install_or_load_pack(pack = packages_list)
 ```
 
-## User inputs
-
-```{r user inputs, message = FALSE, warning = FALSE,results = "hide"}
-include_holders = T
-```
-
-
 ## Get Raw Data
 In this section, data used in the analysis is loaded and prepared for analysis
 ```{r get_data, message=FALSE, warning=FALSE, results="show"}
@@ -120,9 +113,10 @@ database_args<-list(
 )
 
 SQL1<-
-"SELECT tws.HEADER.Survey_Date, tws.MARK_TYPE_LUT.MarkCode, tws.FISH_STATUS_LUT.Description,tws.POINT_LOCATIONS_LUT.short_name, tws.SCALECARD_FRONT.Scale_Age_Code, tws.AGE_LUT.age_code,tws.POINT_LOCATIONS_LUT.stream_lut_id,tws.SGS_REACHES_LUT.stream_lut_id
-FROM tws.STREAM_NAME_LUT RIGHT JOIN ((tws.SGS_REACHES_LUT RIGHT JOIN (((tws.RUN_LUT INNER JOIN (((tws.HEADER INNER JOIN tws.SCALECARD_BACK ON tws.HEADER.HEADER_Id = tws.SCALECARD_BACK.HEADER_Id) INNER JOIN tws.SCALECARD_FRONT ON tws.SCALECARD_BACK.SCALE_CARD_Id = tws.SCALECARD_FRONT.SCALE_CARD_Id) INNER JOIN tws.SPECIES_LUT ON tws.SCALECARD_BACK.SPECIES_Id = tws.SPECIES_LUT.species_lut_id) ON tws.RUN_LUT.RUN_LUT_Id = tws.SCALECARD_BACK.RUN_LUT_Id) INNER JOIN tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id) INNER JOIN tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id) ON tws.SGS_REACHES_LUT.stream_reach_id = tws.HEADER.STREAM_REACH_Id) LEFT JOIN tws.POINT_LOCATIONS_LUT ON tws.HEADER.POINT_LOCATIONS_LUT_Id = tws.POINT_LOCATIONS_LUT.point_locations_lut_id) ON tws.STREAM_NAME_LUT.stream_lut_id = tws.POINT_LOCATIONS_LUT.stream_lut_id
+"SELECT tws.HEADER.Survey_Date, tws.MARK_TYPE_LUT.MarkCode, tws.FISH_STATUS_LUT.Description,tws.POINT_LOCATIONS_LUT.short_name, tws.SCALECARD_FRONT.Scale_Age_Code, tws.AGE_LUT.age_code,tws.POINT_LOCATIONS_LUT.stream_lut_id,tws.SGS_REACHES_LUT.stream_lut_id,tws.RUN_LUT.Run_desc
+FROM tws.STREAM_NAME_LUT RIGHT JOIN ((tws.SGS_REACHES_LUT RIGHT JOIN ((((((tws.HEADER INNER JOIN tws.SCALECARD_BACK ON tws.HEADER.HEADER_Id = tws.SCALECARD_BACK.HEADER_Id) INNER JOIN tws.SCALECARD_FRONT ON tws.SCALECARD_BACK.SCALE_CARD_Id = tws.SCALECARD_FRONT.SCALE_CARD_Id) INNER JOIN tws.SPECIES_LUT ON tws.SCALECARD_BACK.SPECIES_Id = tws.SPECIES_LUT.species_lut_id)) INNER JOIN tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id) INNER JOIN tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id) ON tws.SGS_REACHES_LUT.stream_reach_id = tws.HEADER.STREAM_REACH_Id) LEFT JOIN tws.POINT_LOCATIONS_LUT ON tws.HEADER.POINT_LOCATIONS_LUT_Id = tws.POINT_LOCATIONS_LUT.point_locations_lut_id) ON tws.STREAM_NAME_LUT.stream_lut_id = tws.POINT_LOCATIONS_LUT.stream_lut_id
 LEFT JOIN tws.AGE_LUT ON tws.SCALECARD_FRONT.Scale_Age_Code = tws.AGE_LUT.age_lut_id
+LEFT JOIN tws.RUN_LUT ON tws.SCALECARD_BACK.RUN_LUT_Id = tws.RUN_LUT.RUN_LUT_Id
 WHERE (((tws.MARK_TYPE_LUT.MarkCode)='UM') AND ((tws.SPECIES_LUT.species)='Steelhead') AND ((tws.SCALECARD_FRONT.Scale_Age_Code) Is Not Null))
 ORDER BY tws.MARK_TYPE_LUT.MarkCode DESC , tws.FISH_STATUS_LUT.Description;"
 
@@ -146,10 +140,25 @@ DF2<-select_table_PostgreSQL(database_args=database_args,SQL=SQL2)%>%
   summarise(mgmtmethodsbasin=first(mgmtmethodsbasin))
 
 DF3<-DF%>%
-  mutate(data_type = ifelse(!is.na(stream_lut_id),"survey","weir_trap"),
-         stream_lut_id = ifelse(data_type == "survey",stream_lut_id,stream_lut_id.1),
-         year = year(survey_date)
+  mutate(data_type = ifelse(!is.na(stream_lut_id),"weir_trap","survey"),
+         stream_lut_id = ifelse(data_type == "weir_trap",stream_lut_id,stream_lut_id.1),
+         year = year(survey_date),
+         age_code = str_trim(age_code),
+         age_code = gsub("/",".",age_code),
+         run_desc_scale = ifelse(grepl('\\+',age_code),"Winter",ifelse(grepl("\\.",age_code),"Summer",NA)),
+         month = month(survey_date),
+         spawn_year = ifelse(run_desc_scale == "Winter" & month < 9, year,
+                             ifelse(run_desc_scale == "Winter" & month >= 9, year + 1,
+                                    ifelse(run_desc_scale == "Summer" & month < 4, year,
+                                           ifelse(run_desc_scale == "Summer" & month >= 4, year + 1, NA
+                                           )
+                                    )
+                             )
+         
+         )
          )%>%
+  dplyr::filter(age_code!="88")%>%
+  dplyr::filter(!is.na(run_desc_scale))%>%
   dplyr::select(-c("stream_lut_id.1"))%>%  
   left_join(DF2)
 
@@ -157,12 +166,30 @@ DF3<-DF%>%
 write.csv(DF3,here::here("results/Raw_UM_Steelhead_Scale_data.csv"),row.names = F)
 
 DF3%>%
-  group_by(year,mgmtmethodsbasin)%>%
+  group_by(spawn_year,mgmtmethodsbasin)%>%
   summarise(n=n())%>%
-  pivot_wider(values_from = n,names_from = year)%>%
-  kbl(caption = 'Table 1. Sample sizes of aged and entered UM steelhead scales by calendar year and management methods basin in TWS',digits =3)%>%
+  pivot_wider(values_from = n,names_from = spawn_year)%>%
+  kbl(caption = 'Table 1. Sample sizes of aged and entered UM steelhead scales by spawn year and management methods basin in TWS',digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
-  
 
+
+DF3%>%
+  group_by(spawn_year,mgmtmethodsbasin,run_desc_scale)%>%
+  summarise(n=n())%>%
+  arrange(spawn_year)%>%
+  pivot_wider(values_from = n,names_from = spawn_year)%>%
+  arrange(mgmtmethodsbasin,run_desc_scale)%>%
+  kbl(caption = 'Table 2. Sample sizes of aged and entered UM steelhead scales by spawn year, management methods basin, and scale-based run type in TWS',digits =3)%>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+# DF3%>%
+#   group_by(spawn_year,mgmtmethodsbasin,run_desc)%>%
+#   summarise(n=n())%>%
+#   arrange(spawn_year)%>%
+#   pivot_wider(values_from = n,names_from = spawn_year)%>%
+#   arrange(mgmtmethodsbasin,run_desc)%>%
+#   kbl(caption = 'Table 3. Sample sizes of aged and entered UM steelhead scales by spawn year, management methods basin, and field called run in TWS',digits =3)%>%
+#   kable_classic(full_width = F, html_font = "Cambria")
 
 ```
