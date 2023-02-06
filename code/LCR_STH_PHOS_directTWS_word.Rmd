@@ -396,6 +396,7 @@ Table2<-DF3%>%
   # add_footer_row(values = "* p < 0.05. ** p < 0.01. *** p < 0.001.", 
   #                colwidths = 4) %>% 
   theme_booktabs() %>% # default theme
+  rotate(rotation = "tbrl",part='header')%>%
   autofit()
 ```
 
@@ -415,7 +416,7 @@ The proportion of hatchery origin spawners $pHOS$ may be estimated by dividing t
 
 $${HOS} \sim binomial({TOS}, {pHOS})$$
 A maximum likelihood estimate (MLE) may be obtained using the method of moments as:
-$$\hat{pHOS} = \frac {HOS} {NOS}$$
+$$\hat{pHOS} = \frac {HOS} {{HOS} + {NOS}}$$
 This estimator is asymptotically unbiased and provides a good estimate of $pHOS$ with sufficient sample sizes. However, for populations lacking efficient capture locations like dams and fish ladders, observations of live and dead spawners permitting the identification of origin may be severely limited with very small sample sizes and some years with no observations. This results in very "noisy" estimates of $pHOS$ using the MLE and binomial estimators above. 
 
 However, if one has multiple years of data and/or multiple populations, estimates of $pHOS$ may be improved by using estimators that exploit the non-independence of consecutive annual datasets (e.g., that composition of spawers may be correlated over time, facilitating temporal smoothing models). We employed two such estimators. First we used a multivariate state space random walk, fit with a logit link function, where pHOS followed the follow process model:
@@ -428,7 +429,7 @@ And $\Sigma$ is decomposed via LDL Cholesky decomposition into a lower left tria
 
 The likelihood was given by:
 $${HOS}_{t,p} \sim binomial({TOS}_{t,p}, {pHOS}_{t,p})$$
-#### Priors
+
 The model was estimated in a Bayesian framework using [**Rstan**](https://mc-stan.org/users/interfaces/rstan) and thus the following priors were used.
 
 The population-specific process error standard deviations were estimated hierarchically with an among population mean ${\sigma}_{mu}$ and population specific random effects ${\gamma}_{p}$.
