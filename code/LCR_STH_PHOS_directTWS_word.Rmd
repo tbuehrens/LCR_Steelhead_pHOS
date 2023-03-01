@@ -433,11 +433,10 @@ $${HOS}_{t,p} \sim binomial({TOS}_{t,p}, {pHOS}_{t,p})$$
 The model was estimated in a Bayesian framework using [**Rstan**](https://mc-stan.org/users/interfaces/rstan) and thus the following priors were used.
 
 The population-specific process error standard deviations were estimated hierarchically with an among population mean ${\sigma}_{mu}$ and unit-normal population-specific random effects ${\gamma}_{p}$ which were scaled by multiplication with the among-population standard deviation in process error standard deviations ${\sigma}_{\sigma}$.
-$${sigma}_{p} = e^{log({\sigma}_{mu}) + {\gamma}_{p}{\sigma}_{\sigma}}$$
+$${\sigma}_{p} = e^{log({\sigma}_{mu}) + {\gamma}_{p}{\sigma}_{\sigma}}$$
 The lower left triangular correlation matrix was given a Lewandowski-Kurowicka-Joe (LKJ) distribution with one degree of freedom:
 $$L \sim LKJ(1)$$
 The among population mean process error standard deviation ${\sigma}_{mu}$ was given a half unit-normal prior:
-
 $${\sigma}_{mu} \sim N(0,1) [0,{\infty}]$$
 and the among population standard deviation in process error standard deviations was given a half unit-normal prior:
 $${\sigma}_{\sigma} \sim N(0,1) [0,{\infty}]$$
