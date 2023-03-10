@@ -113,12 +113,39 @@ database_args<-list(
 )
 
 SQL1<-
-"SELECT tws.HEADER.Survey_Date, tws.MARK_TYPE_LUT.MarkCode, tws.FISH_STATUS_LUT.Description,tws.POINT_LOCATIONS_LUT.short_name, tws.SCALECARD_FRONT.Scale_Age_Code, tws.AGE_LUT.age_code,tws.POINT_LOCATIONS_LUT.stream_lut_id,tws.SGS_REACHES_LUT.stream_lut_id,tws.RUN_LUT.Run_desc
-FROM tws.STREAM_NAME_LUT RIGHT JOIN ((tws.SGS_REACHES_LUT RIGHT JOIN ((((((tws.HEADER INNER JOIN tws.SCALECARD_BACK ON tws.HEADER.HEADER_Id = tws.SCALECARD_BACK.HEADER_Id) INNER JOIN tws.SCALECARD_FRONT ON tws.SCALECARD_BACK.SCALE_CARD_Id = tws.SCALECARD_FRONT.SCALE_CARD_Id) INNER JOIN tws.SPECIES_LUT ON tws.SCALECARD_BACK.SPECIES_Id = tws.SPECIES_LUT.species_lut_id)) INNER JOIN tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id) INNER JOIN tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id) ON tws.SGS_REACHES_LUT.stream_reach_id = tws.HEADER.STREAM_REACH_Id) LEFT JOIN tws.POINT_LOCATIONS_LUT ON tws.HEADER.POINT_LOCATIONS_LUT_Id = tws.POINT_LOCATIONS_LUT.point_locations_lut_id) ON tws.STREAM_NAME_LUT.stream_lut_id = tws.POINT_LOCATIONS_LUT.stream_lut_id
+"SELECT 
+  tws.HEADER.Survey_Date, 
+  tws.MARK_TYPE_LUT.MarkCode, 
+  tws.FISH_STATUS_LUT.Description,
+  tws.POINT_LOCATIONS_LUT.short_name, 
+  tws.SCALECARD_FRONT.SAMPLE_TYPE_CATEGORY_LUT_Id,
+  tws.SCALECARD_FRONT.Scale_Age_Code, 
+  tws.SCALECARD_FRONT.Fork_Length_Meas,
+  tws.AGE_LUT.age_code,
+  tws.AGE_LUT.fw_annuli_txt,
+  tws.AGE_LUT.maiden_sw_annuli_txt,
+  tws.AGE_LUT.total_sw_annuli,
+  tws.AGE_LUT.sy_total_age,
+  tws.AGE_LUT.prior_spawning_count,
+  tws.POINT_LOCATIONS_LUT.stream_lut_id,
+  tws.SGS_REACHES_LUT.stream_lut_id,
+  tws.RUN_LUT.Run_desc
+FROM 
+  tws.STREAM_NAME_LUT RIGHT JOIN ((tws.SGS_REACHES_LUT RIGHT JOIN ((((((tws.HEADER INNER JOIN   
+  tws.SCALECARD_BACK ON tws.HEADER.HEADER_Id = tws.SCALECARD_BACK.HEADER_Id) INNER JOIN 
+  tws.SCALECARD_FRONT ON tws.SCALECARD_BACK.SCALE_CARD_Id = tws.SCALECARD_FRONT.SCALE_CARD_Id) INNER JOIN 
+  tws.SPECIES_LUT ON tws.SCALECARD_BACK.SPECIES_Id = tws.SPECIES_LUT.species_lut_id)) INNER JOIN 
+  tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id) INNER JOIN 
+  tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id) 
+  ON tws.SGS_REACHES_LUT.stream_reach_id = tws.HEADER.STREAM_REACH_Id) LEFT JOIN tws.POINT_LOCATIONS_LUT 
+  ON tws.HEADER.POINT_LOCATIONS_LUT_Id = tws.POINT_LOCATIONS_LUT.point_locations_lut_id) ON 
+  tws.STREAM_NAME_LUT.stream_lut_id = tws.POINT_LOCATIONS_LUT.stream_lut_id
 LEFT JOIN tws.AGE_LUT ON tws.SCALECARD_FRONT.Scale_Age_Code = tws.AGE_LUT.age_lut_id
 LEFT JOIN tws.RUN_LUT ON tws.SCALECARD_BACK.RUN_LUT_Id = tws.RUN_LUT.RUN_LUT_Id
-WHERE (((tws.MARK_TYPE_LUT.MarkCode)='UM') AND ((tws.SPECIES_LUT.species)='Steelhead') AND ((tws.SCALECARD_FRONT.Scale_Age_Code) Is Not Null))
-ORDER BY tws.MARK_TYPE_LUT.MarkCode DESC , tws.FISH_STATUS_LUT.Description;"
+WHERE (((tws.MARK_TYPE_LUT.MarkCode)='UM') AND ((tws.SPECIES_LUT.species)='Steelhead') AND 
+  ((tws.SCALECARD_FRONT.Scale_Age_Code) Is Not Null))
+ORDER BY tws.MARK_TYPE_LUT.MarkCode DESC , tws.FISH_STATUS_LUT.Description;
+"
 
 
 DF<-select_table_PostgreSQL(database_args=database_args,SQL=SQL1)%>%
@@ -138,6 +165,7 @@ DF2<-select_table_PostgreSQL(database_args=database_args,SQL=SQL2)%>%
   as_tibble()%>%
   group_by(stream_lut_id,stream_name)%>%
   summarise(mgmtmethodsbasin=first(mgmtmethodsbasin))
+
 
 DF3<-DF%>%
   mutate(data_type = ifelse(!is.na(stream_lut_id),"weir_trap","survey"),
