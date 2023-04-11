@@ -419,7 +419,9 @@ A maximum likelihood estimate (MLE) may be obtained using the method of moments 
 $$\hat{pHOS} = \frac {HOS} {{HOS} + {NOS}}$$
 This estimator is asymptotically unbiased and provides a good estimate of $pHOS$ with sufficient sample sizes. However, for populations lacking efficient capture locations like dams and fish ladders, observations of live and dead spawners permitting the identification of origin may be severely limited with very small sample sizes and some years with no observations. This results in very "noisy" estimates of $pHOS$ using the MLE and binomial estimators above. 
 
-However, if one has multiple years of data and/or multiple populations, estimates of $pHOS$ may be improved by using estimators that exploit the non-independence of consecutive annual datasets (e.g., that composition of spawers may be correlated over time, facilitating temporal smoothing models). We employed two such estimators. First we used a multivariate state space random walk, fit with a logit link function, where pHOS followed the follow process model:
+However, if one has multiple years of data and/or multiple populations, estimates of $pHOS$ may be improved by using estimators that exploit the non-independence of consecutive annual datasets (e.g., that composition of spawers may be correlated over time, facilitating temporal smoothing models). We employed two such estimators. 
+
+First we used a multivariate state space random walk, fit with a logit link function, where pHOS followed the follow process model:
 
 $${pHOS}_{t,1:p} = ilogit(logit({pHOS}_{t-1,1:p}) + {\epsilon}_{t,1:p})$$
 Where process errors ${\epsilon}$ are estimated as:
@@ -444,6 +446,12 @@ $${\sigma}_{\sigma} \sim N(0,1) [0,{\infty}]$$
 Finally, to initialize the process model, the first state was given an uninformative flat prior:
 $${pHOS}_{t=1,1:p} \sim beta(1,1)$$
 The complete model code is reprinted below in the Appendix.
+
+We also fit a Generalized Additive Model using the mgcv [**package**](https://cran.r-project.org/web/packages/mgcv/index.html). In this case we used the same binomial likelihood for the response variable as in the state-space approach:
+$${HOS}_{t,p} \sim binomial({TOS}_{t,p}, {pHOS}_{t,p})$$
+but the predictions on the logit link scale were estimated using a thin plate spline on spawn year:
+$${pHOS}_{t,p} = ilogit(s(year, by = p, k = 4))$$
+where $$s$$ is the operator for the thin plate spline, by $$p$$ indicates the independent fitting of the splines for each population, and $$k$$ indicates the number of knots, which were chosen to ensure minimum sufficient statistics for even the populations with the most sparse observations.
 
 
 ## Results
