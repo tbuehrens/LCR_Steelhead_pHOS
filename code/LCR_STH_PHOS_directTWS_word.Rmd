@@ -400,9 +400,14 @@ Table2<-DF3%>%
   autofit()
 ```
 
+
+
+
+
+
+
 ## Executive Summary
 This markdown documents the estimation of pHOS for Lower Columbia winter steelhead populations based on spawning ground surveys. It is only completed for populations below dams and excludes the Lower Cowlitz & NF Lewis for which estimates are developed as part of other reporting processes. Estimates for Kalama and NF Toutle/Mainstem Toutle Populations are incomplete here because a portion of these populations is located above dams so these estimates must be combined with the above dam estimates for those populations. Summer steelhead pHOS estimates are also excluded because those are available from snorkel surveys. Three models are used to estimate pHOS: 1) method of moments where pHOS is calculated as (HOS/(HOS + NOS)) annually for each population in years data are available, 2) a multivariate state-space model fit to the count data using a logit link function and a binomial response using STAN [**rstan**](https://mc-stan.org/users/interfaces/rstan), 3) a Generalize Additive Model fit to the count data using a logit link function and a binomial response where a thin plate spline is fit independently to each population's data using the R package [**mgcv**](https://cran.r-project.org/web/packages/mgcv/mgcv.pdf). The model used to fit the logit-normal random walk is printed below in the appendix. 
-
 ## Introduction
 
 ## Methods
