@@ -400,7 +400,26 @@ Table2<-DF3%>%
   autofit()
 ```
 
+```{r get summer steelhead pHOS raw data  message=FALSE, warning=FALSE, results="show", echo=FALSE}
 
+SQLstring<-"
+SELECT tws.header.header_id, tws.header.survey_date, tws.header.return_yr, tws.header.gear_type_lut_id, 
+  tws.stream_name_lut.stream_name, tws.header.stream_reach_id, tws.datasheet_trap.mark_type_lut_id,   
+  tws.datasheet_trap.recapture_tag_1_type_lut_id, tws.datasheet_trap.recapture_tag_1_shape_color_type_lut_id, 
+  tws.datasheet_trap.recapture_tag_2_type_lut_id, tws.datasheet_trap.recapture_tag_2_shape_color_type_lut_id, 
+  tws.datasheet_trap.count_num 
+FROM tws.stream_name_lut RIGHT JOIN (tws.header INNER JOIN tws.datasheet_trap ON tws.header.header_id = 
+  tws.datasheet_trap.header_id) ON tws.stream_name_lut.stream_lut_id = tws.header.stream_lut_id WHERE   
+  ((tws.header.gear_type_lut_id=8) AND (tws.header.stream_lut_id=3883) AND (tws.datasheet_trap.species_id=3) AND 
+  (tws.datasheet_trap.run_lut_id=2)) OR ((tws.header.gear_type_lut_id=8) AND (tws.header.stream_lut_id=1106) AND        
+  (tws.datasheet_trap.species_id=3) AND (tws.datasheet_trap.run_lut_id=2));"
+
+
+datxx<-select_table_PostgreSQL(database_args=database_args,SQL=SQLstring)%>%
+     as_tibble()
+
+
+```
 
 
 
