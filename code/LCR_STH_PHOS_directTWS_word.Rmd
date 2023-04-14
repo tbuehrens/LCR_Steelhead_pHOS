@@ -342,7 +342,7 @@ p2<-ggplot(DF,aes(x=spawn_year,y=pHOS_gam,group=population))+
 
 ```{r tables, message=FALSE, warning=FALSE, results="show", echo=FALSE}
 DF2<-DF%>%
-     filter(spawn_year>2017)%>%
+     filter(spawn_year>year(Sys.Date())-5)%>%
      group_by(population)%>%
      summarise(mean_pHOS_ss_rw = scales::percent(mean(pHOS_ss_rw),accuracy = 0.1),
                mean_pHOS_mom = scales::percent(mean(pHOS_mom,na.rm=T),accuracy = 0.1),
@@ -386,10 +386,10 @@ DF3<-DF%>%
 # write.csv(DF3,here::here(paste0("results/summarized_data_and_annual_pHOS_ests_",holders,".csv")),row.names = F)
 
 
-Table2<-DF3%>%
+Table3<-DF3%>%
   flextable() %>% 
   align(part = "all") %>% # left align
-  set_caption(caption = 'Table 2. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))', align_with_table = F) %>% 
+  set_caption(caption = 'Table 3. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))', align_with_table = F) %>% 
   font(fontname = "Calibri (Body)", part = "all") %>% 
   fontsize(size = 6, part = "body") %>% 
   # add footer if you want
@@ -400,28 +400,94 @@ Table2<-DF3%>%
   autofit()
 ```
 
-```{r get summer steelhead pHOS raw data  message=FALSE, warning=FALSE, results="show", echo=FALSE}
-
+```{r get summer steelhead pHOS raw data,  message=FALSE, warning=FALSE, results="show", echo=FALSE}
 SQLstring<-"
-SELECT tws.header.header_id, tws.header.survey_date, tws.header.return_yr, tws.header.gear_type_lut_id, 
-  tws.stream_name_lut.stream_name, tws.header.stream_reach_id, tws.datasheet_trap.mark_type_lut_id,   
-  tws.datasheet_trap.recapture_tag_1_type_lut_id, tws.datasheet_trap.recapture_tag_1_shape_color_type_lut_id, 
-  tws.datasheet_trap.recapture_tag_2_type_lut_id, tws.datasheet_trap.recapture_tag_2_shape_color_type_lut_id, 
-  tws.datasheet_trap.count_num 
-FROM tws.stream_name_lut RIGHT JOIN (tws.header INNER JOIN tws.datasheet_trap ON tws.header.header_id = 
-  tws.datasheet_trap.header_id) ON tws.stream_name_lut.stream_lut_id = tws.header.stream_lut_id WHERE   
-  ((tws.header.gear_type_lut_id=8) AND (tws.header.stream_lut_id=3883) AND (tws.datasheet_trap.species_id=3) AND 
-  (tws.datasheet_trap.run_lut_id=2)) OR ((tws.header.gear_type_lut_id=8) AND (tws.header.stream_lut_id=1106) AND        
-  (tws.datasheet_trap.species_id=3) AND (tws.datasheet_trap.run_lut_id=2));"
-
+SELECT
+  tws.header.header_id,
+  tws.header.survey_date,
+  tws.header.return_yr,
+  tws.header.gear_type_lut_id,
+  tws.stream_name_lut.stream_name,
+  tws.header.stream_reach_id,
+  tws.species_lut.species,
+  tws.datasheet_trap.mark_type_lut_id,
+  tws.mark_type_lut.markcode,
+  tag_type1.tag_type ,
+  tag_color1.description,
+  tag_type2.tag_type ,
+  tag_color2.description,
+  tws.datasheet_trap.count_num,
+  tws.run_lut.run_desc
+FROM
+  (
+    (
+      tws.stream_name_lut
+      LEFT JOIN (
+        tws.header
+        INNER JOIN tws.datasheet_trap ON tws.header.header_id = tws.datasheet_trap.header_id
+      ) ON tws.stream_name_lut.stream_lut_id = tws.header.stream_lut_id
+    )
+    LEFT JOIN tws.species_lut ON tws.datasheet_trap.species_id = tws.species_lut.species_lut_id
+  )
+  LEFT JOIN tws.mark_type_lut ON tws.datasheet_trap.mark_type_lut_id = tws.mark_type_lut.mark_type_id
+  LEFT JOIN tws.run_lut ON tws.datasheet_trap.run_lut_id = tws.run_lut.run_lut_id
+  LEFT JOIN tws.tag_type_lut AS tag_type1 ON tws.datasheet_trap.recapture_tag_1_type_lut_id = tag_type1.tag_type_lut_id
+  LEFT JOIN tws.tag_shape_color_lut AS tag_color1 ON tws.datasheet_trap.recapture_tag_1_shape_color_type_lut_id = tag_color1.tag_shape_color_lut_id
+  LEFT JOIN tws.tag_type_lut AS tag_type2 ON tws.datasheet_trap.recapture_tag_2_type_lut_id = tag_type2.tag_type_lut_id 
+  LEFT JOIN tws.tag_shape_color_lut AS tag_color2 ON tws.datasheet_trap.recapture_tag_2_shape_color_type_lut_id = tag_color2.tag_shape_color_lut_id
+WHERE
+  (
+    ((tws.header.gear_type_lut_id) = 8)
+    AND ((tws.datasheet_trap.species_id) = 3)
+    AND ((tws.datasheet_trap.run_lut_id) = 2)
+  )
+  OR (
+    ((tws.header.gear_type_lut_id) = 8)
+    AND ((tws.datasheet_trap.species_id) = 3)
+    AND ((tws.datasheet_trap.run_lut_id) = 2)
+  );
+"
 
 datxx<-select_table_PostgreSQL(database_args=database_args,SQL=SQLstring)%>%
-     as_tibble()
+  as_tibble()%>%
+  filter(stream_name %in%c("Washougal River","Lewis River - East Fork","Kalama River", "Wind River"))%>% 
+  rename(population=stream_name)%>%
+  mutate(spawn_year=ifelse(month(survey_date)>4,year(survey_date)+1,year(survey_date)))%>%
+  group_by(population,spawn_year,markcode)%>%
+  summarise(count_num=sum(count_num))%>%
+  filter(markcode%in%c("UM","AD"))%>%
+  pivot_wider(id_cols=c("spawn_year","population"),names_from = markcode,values_from = count_num)%>%
+  mutate(pHOS_mom = (AD/(AD+UM)))%>%
+  arrange(population,spawn_year)
 
+Table2<-datxx%>%
+     filter(spawn_year>year(Sys.Date())-5)%>%
+     group_by(population)%>%
+     summarise(mean_pHOS_mom = scales::percent(mean(pHOS_mom,na.rm=T),accuracy = 0.1)
+     )%>%
+     flextable() %>% 
+     align(part = "all") %>% # left align
+     set_caption(caption = 'Table 2. 5-year Mean pHOS by Population for LCR summer steelhead based on snorkel survey counts of clipped and unclipped steelhead. Sample sizes are sufficient so only the method of moments estimates "mean_pHOS_mom" (HOS/(HOS + NOS)) is reported', align_with_table = F) %>% 
+     font(fontname = "Calibri (Body)", part = "all") %>% 
+     fontsize(size = 6, part = "body") %>% 
+     theme_booktabs() %>% # default theme
+     rotate(rotation = "tbrl",part='header')%>%
+     autofit()
 
+Table4<-datxx%>%
+  mutate(pHOS_mom=scales::percent(pHOS_mom,accuracy = 0.1))%>%
+  flextable() %>% 
+  align(part = "all") %>% # left align
+  set_caption(caption = 'Table 4. Raw Data and PHOS estimates by year and population for summer steelhead populations based on snorkel survey counts of unclipped and clipped steelhead. Snorkel counts have sufficient sample sizes that statistical estimates have not been needed therefore only method of moment estimates calculated independently each year are provided: (HOS/(HOS + NOS))', align_with_table = F) %>% 
+  font(fontname = "Calibri (Body)", part = "all") %>% 
+  fontsize(size = 6, part = "body") %>% 
+  # add footer if you want
+  # add_footer_row(values = "* p < 0.05. ** p < 0.01. *** p < 0.001.", 
+  #                colwidths = 4) %>% 
+  theme_booktabs() %>% # default theme
+  rotate(rotation = "tbrl",part='header')%>%
+  autofit()
 ```
-
-
 
 
 
@@ -475,11 +541,10 @@ We also fit a Generalized Additive Model using the mgcv [**package**](https://cr
 $${HOS}_{t,p} \sim binomial({TOS}_{t,p}, {pHOS}_{t,p})$$
 but the predictions on the logit link scale were estimated using a thin plate spline on spawn year:
 $${pHOS}_{t,p} = ilogit(s(year, by = p, k = 4))$$
-where $$s$$ is the operator for the thin plate spline, by $$p$$ indicates the independent fitting of the splines for each population, and $$k$$ indicates the number of knots, which were chosen to ensure minimum sufficient statistics for even the populations with the most sparse observations.
+where $s$ is the operator for the thin plate spline, by $p$ indicates the independent fitting of the splines for each population, and $k$ indicates the number of knots, which were chosen to ensure minimum sufficient statistics for even the populations with the most sparse observations.
 
 
 ## Results
-
 ```{r plot_ss_rw, message=FALSE, warning=FALSE, results="show",fig.cap="Figure 1. Estimates of pHOS for Lower Columbia Winter Steelhead by population and year. Method of moment estimates (HOS/(HOS + NOS)) are shown as points where size corresponds to sample size. Estimates from the state-space multivariate random walk model using a logit link with a binomial response are shown as a posterior median (line) and 95% CI (shading).", echo=FALSE,out.width = '100%'}
 print(p1)
 ```
@@ -499,7 +564,17 @@ Table2
 ## Discussion
 
 ## Appendix
-Appendix 1: STAN code used to fit the multivariate state space random walk with logit link using a binomial response to the HOS and NOS data from each population to estimate pHOS.
+
+Appendix 1: The raw data and annual pHOS estimates for each method for both winter steelhead based on spawning ground surveys, and summer steelhead based on snorkel surveys:
+```{r table 3, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+Table3
+```
+
+```{r table 4, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+Table4
+```
+
+Appendix 2: STAN code used to fit the multivariate state space random walk with logit link using a binomial response to the HOS and NOS data from each population to estimate pHOS.
 ```{r appendix, message=FALSE, warning=FALSE, results="show", echo=FALSE}
 noquote(read_lines(here::here("code/binomial_ss_random_walk_model_mv.stan")))
 ```
