@@ -565,9 +565,9 @@ The complete model code is reprinted below in the Appendix.
 
 We also fit a Generalized Additive Model using the mgcv [**package**](https://cran.r-project.org/web/packages/mgcv/index.html). In this case we used the same binomial likelihood for the response variable as in the state-space approach:
 $${HOS}_{t,p} \sim binomial({TOS}_{t,p}, {pHOS}_{t,p})$$
-but the predictions on the logit link scale were estimated using a thin plate spline on spawn year:
-$${pHOS}_{t,p} = ilogit(s(year, by = p, k = 4))$$
-where $s$ is the operator for the thin plate spline, by $p$ indicates the independent fitting of the splines for each population, and $k$ indicates the number of knots, which were chosen to ensure minimum sufficient statistics for even the populations with the most sparse observations.
+but the predictions on the logit link scale were estimated using a spline on spawn year:
+$${pHOS}_{t,p} = ilogit(s(year, by = p, k = 4, m = 1, bs = ps))$$
+where $s$ is the operator for the spline, by $p$ indicates the independent fitting of the splines for each population, and $k$ indicates the number of knots where -1 indicates that the number of knots for the spline will be chosen automatically by Generalized Cross-validation (GCV), and $bs$ is the spline basis function type which was set to basis splines, and $m$ is the penalty order which was set to 1 for first order smoothing.
 
 
 ## Results
