@@ -416,11 +416,11 @@ lowertoutleprop<-SPIdat%>%
   mutate(p_NF_Toutle_Green_only = NF_Toutle_Green_only/NF_Toutle_Total)
 
 
-Table1<-lowertoutleprop%>%
+AppendixTable1<-lowertoutleprop%>%
   mutate(p_NF_Toutle_Green_only = scales::percent(p_NF_Toutle_Green_only, accuracy=0.1))%>%
   flextable() %>% 
   align(part = "all") %>% # left align
-  set_caption(caption = 'Table 3. The proportion of total spawners in two subpopulation areas of the NF Toutle: 1) the Green River and tributaries below the Toutle Sediment Retention Structure (SRS), and 2) Above the SRS' , align_with_table = F) %>% 
+  set_caption(caption = 'Appendix Table 1. The proportion of total spawners in two subpopulation areas of the NF Toutle: 1) the Green River and tributaries below the Toutle Sediment Retention Structure (SRS), and 2) Above the SRS' , align_with_table = F) %>% 
   font(fontname = "Calibri (Body)", part = "all") %>% 
   fontsize(size = 6, part = "body") %>% 
   theme_booktabs() %>% # default theme
@@ -471,8 +471,8 @@ p1<-ggplot(DF%>%filter(spawn_year>2010),aes(x=spawn_year,y=pHOS_ss_rw,group=popu
      geom_line(size=0.6)+
      geom_point(aes(y=pHOS_mom,size=as.numeric(HOS+NOS)))+
      scale_size(name   = "Sample Size",
-                breaks = c(2,4,8,16,32,64),
-                labels = c(2,4,8,16,32,64)
+                breaks = c(2,4,8,16,32,64,128,256),
+                labels = c(2,4,8,16,32,64,128,256)
                 )+
      facet_wrap(~population,ncol=2)+
      ylab("Proportion of Hatchery-Origin Spawners")+
@@ -488,8 +488,8 @@ p2<-ggplot(DF%>%filter(spawn_year>2010),aes(x=spawn_year,y=pHOS_gam,group=popula
      geom_line(size=0.6)+
      geom_point(aes(y=pHOS_mom,size=as.numeric(HOS+NOS)))+
      scale_size(name   = "Sample Size",
-                breaks = c(2,4,8,16,32,64),
-                labels = c(2,4,8,16,32,64)
+                breaks = c(2,4,8,16,32,64,128,256),
+                labels = c(2,4,8,16,32,64,128,256)
                 )+
      facet_wrap(~population,ncol=2)+
      ylab("Proportion of Hatchery-Origin Spawners")+
@@ -516,7 +516,7 @@ write.csv(DF2,here::here(paste0("results/5_year_mean_pHOS_",holders,".csv")),row
 #      kbl(caption = 'Table 1. 5-year Mean pHOS by Population. Three estimates are provided: 1) results from the state space random walk model ("mean_pHOS_ss_rw"), 2) results from the GAM analysis ("mean_pHOS_gam"), and 3) 5 year means based on method of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))',digits =3)%>%
 #      kable_classic(full_width = F, html_font = "Cambria")
 
-Table2<-DF2%>%
+Table1<-DF2%>%
   flextable() %>% 
   align(part = "all") %>% # left align
   set_caption(caption = 'Table 1. 5-year Mean pHOS by Population. Three estimates are provided: 1) results from the state space random walk model ("mean_pHOS_ss_rw"), 2) results from the GAM analysis ("mean_pHOS_gam"), and 3) 5 year means based on method of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))', align_with_table = F) %>% 
@@ -546,10 +546,10 @@ DF3<-DF%>%
 write.csv(DF3,here::here(paste0("results/summarized_data_and_annual_pHOS_ests_",holders,".csv")),row.names = F)
 
 
-Table3<-DF3%>%
+AppendixTable2<-DF3%>%
   flextable() %>% 
   align(part = "all") %>% # left align
-  set_caption(caption = 'Table 3. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))', align_with_table = F) %>% 
+  set_caption(caption = 'Appendix Table 2. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))', align_with_table = F) %>% 
   font(fontname = "Calibri (Body)", part = "all") %>% 
   fontsize(size = 6, part = "body") %>% 
   # add footer if you want
@@ -562,7 +562,7 @@ Table3<-DF3%>%
 
 
 ## Executive Summary
-This markdown documents the estimation of pHOS for Lower Columbia winter steelhead populations based on spawning ground surveys. It is only completed for populations below dams and excludes the Lower Cowlitz & NF Lewis for which estimates are developed as part of other reporting processes. Estimates for Kalama and NF Toutle/Mainstem Toutle Populations are incomplete here because a portion of these populations is located above dams so these estimates must be combined with the above dam estimates for those populations. Summer steelhead pHOS estimates are also excluded because those are available from snorkel surveys. Three models are used to estimate pHOS: 1) method of moments where pHOS is calculated as (HOS/(HOS + NOS)) annually for each population in years data are available, 2) a multivariate state-space model fit to the count data using a logit link function and a binomial response using STAN [**rstan**](https://mc-stan.org/users/interfaces/rstan), 3) a Generalize Additive Model fit to the count data using a logit link function and a binomial response where a thin plate spline is fit independently to each population's data using the R package [**mgcv**](https://cran.r-project.org/web/packages/mgcv/mgcv.pdf). The model used to fit the logit-normal random walk is printed below in the appendix. 
+Hatchery steelhead provide valuable angling opportunities and may be used to supplement natural origin populations while also posing risks to natural origin populations. As a result the proportion of hatchery origin spawners (pHOS) may be monitored as a surrogate for the potential of hatchery origin spawners to negatively affect wild populations. We report estimates of pHOS for Lower Columbia winter and summer steelhead populations based on satistical smoothing models fit to observations of hatchery and natural origin spawners during spawning ground surveys (winter steelhead) and snorkel surveys (summer steelhead). Results currently exclude the Cowlitz and Lewis Basin populations for which estimates are developed as part of other reporting processes associated with dam operator licenses. Estimates for Kalama and NF Toutle/Mainstem Toutle winter run populations are reported both for below-dam subpopulations as well as the whole populations which are generated by developing spawner abundance-weighted averages of pHOS below the dams in these basins based on spawning ground surveys, with above-dam estimates generated with trap counts. Three models are used to estimate pHOS: 1) method of moments where pHOS is calculated annually as (HOS/(HOS + NOS)) for each population in years data are available, 2) a multivariate state-space model fit to the count data using a logit link function and a binomial response using STAN [**rstan**](https://mc-stan.org/users/interfaces/rstan), 3) a Generalized Additive Model fit to the count data using a logit link function and a binomial response where a thin plate spline is fit independently to each population's data using the R package [**mgcv**](https://cran.r-project.org/web/packages/mgcv/mgcv.pdf). The model used to fit the state-space logit-normal random walk is printed below in the appendix. 
 
 ## Introduction
 
@@ -636,7 +636,7 @@ $${\sigma}_{\sigma} \sim N(0,1) [0,{\infty}]$$
 
 Finally, to initialize the process model, the first state was given an uninformative flat prior:
 $${pHOS}_{t=1,1:p} \sim beta(1,1)$$
-The complete model code is reprinted below in the Appendix.
+The complete model code is reprinted below in Appendix 3.
 
 We also fit a Generalized Additive Model using the mgcv [**package**](https://cran.r-project.org/web/packages/mgcv/index.html). In this case we used the same binomial likelihood for the response variable as in the state-space approach:
 $${HOS}_{t,p} \sim binomial({TOS}_{t,p}, {pHOS}_{t,p})$$
@@ -646,16 +646,9 @@ where $s$ is the operator for the spline, by $p$ indicates the independent fitti
 
 ### Weighting subpopulation estimates to obtain population estimates of pHOS
 
-For the Kalama and NF Toutle populations, spawning ground surveys only cover a portion of the spawning habitat, wheres dam trap counts provide a census count of the remainder of spawners (above Kalama Falls and the Toutle SRS). To obtain population estimates, pHOS below the traps, from spawning ground surveys is combined via and abundance-weighted average with pHOS above the traps, which is zero due to the management choice not to put Winter hatchery steelhead upstream in both basins.
+For the Kalama and NF Toutle populations, spawning ground surveys only cover a portion of the spawning habitat, wheres dam trap counts provide a census count of the remainder of spawners (above Kalama Falls and the Toutle SRS). To obtain population estimates, pHOS below the traps, from spawning ground surveys is combined via and abundance-weighted average with pHOS above the traps, which is zero due to the management choice not to put Winter hatchery steelhead upstream in both basins. For the NF Toutle winter steelhead population, pHOS above the SRS is zero. Therefore we calculated the total proportion of spawners that occurred above and below the SRS based on annual abundance estimates for the two areas reported in WDFW's Salmon Population Indicators [**(SPI)**](https://data.wa.gov/Natural-Resources-Environment/WDFW-Salmonid-Population-Indicators-SPI-Escapement/fgyz-n3uk) database in each year and multiplied those proportions (Table 2) by the annual pHOS estimates for the sub-population below the SRS (Table 3) to obtain a weighted average for each year. The same approach was used for the Kalama River where pHOS was zero above Kalama falls for winter steelhead, and the pHOS below Kalama Falls Hatchery was mulitplied by the proportion of total spawners below the hatchery to obtain a population level estimate of pHOS. Over many years an average of 10% of Kalama winter steelhead spawn below the falls (Jeremy Wilson, WDFW, unpublished data) so this percent was used to weight all years.
 
 ## Results
-
-### Weights subpopulation estimates
-For the NF Toutle winter steelhead population, pHOS above the SRS is 0. Therefore we calculated the total proportion of spawners that occurred above and below the SRS based on annual abundance estimates for the two areas reported in WDFW's Salmon Population Indicators [**(SPI)**](https://data.wa.gov/Natural-Resources-Environment/WDFW-Salmonid-Population-Indicators-SPI-Escapement/fgyz-n3uk) database in each year and multiplied the proportion below (Table 1) by the pHOS below to obtain a weighted average.
-
-```{r table 1, message=FALSE, warning=FALSE, results="show", echo=FALSE}
-Table1
-```
 
 ### pHOS estimates from the state space random walk model
 
@@ -670,21 +663,28 @@ print(p2)
 ```
 
 
-Table 2 shows the most recent 5 year mean pHOS estimates for all methods for each population and the two subpopulations.
-```{r table 2, message=FALSE, warning=FALSE, results="show", echo=FALSE}
-Table2
+Table 1 shows the most recent 5 year mean pHOS estimates for all methods for each population and the two subpopulations.
+```{r table 1, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+Table1
 ```
 
 ## Discussion
 
 ## Appendix
+Appendix 1: weighting subpopulation estimates to obtain total pHOS estimates
 
-Appendix 1: The raw data and annual pHOS estimates for each method for both winter steelhead based on spawning ground surveys, and summer steelhead based on snorkel surveys:
-```{r table 3, message=FALSE, warning=FALSE, results="show", echo=FALSE}
-Table3
+```{r appendix table 1, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+AppendixTable1
 ```
 
-Appendix 2: STAN code used to fit the multivariate state space random walk with logit link using a binomial response to the HOS and NOS data from each population to estimate pHOS.
+
+
+Appendix 2: The raw data and annual pHOS estimates for each method for both winter steelhead based on spawning ground surveys, and summer steelhead based on snorkel surveys:
+```{r table 3, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+AppendixTable2
+```
+
+Appendix 3: STAN code used to fit the multivariate state space random walk with logit link using a binomial response to the HOS and NOS data from each population to estimate pHOS.
 ```{r appendix, message=FALSE, warning=FALSE, results="show", echo=FALSE}
 noquote(read_lines(here::here("code/binomial_ss_random_walk_model_mv.stan")))
 ```
