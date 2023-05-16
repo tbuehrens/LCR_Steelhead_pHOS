@@ -400,9 +400,9 @@ database_args<-list(
     UID = Sys.getenv("POSTGRES_SPI_UN"),
     PWD = Sys.getenv("POSTGRES_SPI_PW"),
     Trusted_Connection = "True"
-  )
+    )
 
-SPIdat<-select_table_PostgreSQL(database_args=database_args,SQL="SELECT * FROM spi.vw_ca_nosa_sos2;")%>%
+SPIdat<-select_table_PostgreSQL(database_args=database_args,SQL="SELECT * FROM spi.vw_ca_nosa_sos;")%>%
   filter(SASISTOCKNAME %in% c("Kalama Winter Steelhead","North Fork Toutle Winter Steelhead"))
 
 lowertoutleprop<-SPIdat%>%
@@ -417,10 +417,13 @@ lowertoutleprop<-SPIdat%>%
 
 
 AppendixTable1<-lowertoutleprop%>%
-  mutate(p_NF_Toutle_Green_only = scales::percent(p_NF_Toutle_Green_only, accuracy=0.1))%>%
+  mutate(p_NF_Toutle_Green_only = scales::percent(p_NF_Toutle_Green_only, accuracy=0.1),
+         SPAWNINGYEAR=as.character(SPAWNINGYEAR)
+         )%>%
+  dplyr::rename(spawn_year=SPAWNINGYEAR)%>%
   flextable() %>% 
   align(part = "all") %>% # left align
-  set_caption(caption = 'Appendix Table 1. The proportion of total spawners in two subpopulation areas of the NF Toutle: 1) the Green River and tributaries below the Toutle Sediment Retention Structure (SRS), and 2) Above the SRS' , align_with_table = F) %>% 
+  set_caption(caption = 'Appendix Table 1. The number and proportion of total spawners in two subpopulation areas of the NF Toutle: 1) the Green River and tributaries below the Toutle Sediment Retention Structure (SRS), and 2) The entire NF Toutle including areas above and below the SRS' , align_with_table = F) %>% 
   font(fontname = "Calibri (Body)", part = "all") %>% 
   fontsize(size = 6, part = "body") %>% 
   theme_booktabs() %>% # default theme
@@ -443,8 +446,35 @@ NF_Toutle_winter_total <- lowertoutleprop %>%
   dplyr::select(-p_NF_Toutle_Green_only)%>%
   mutate(population="NF_Toutle winter")
 
-Kalama_winter_total<-DF%>%
-  filter(population=="KalamabelowKFH winter")%>%
+upperkalamaprop<-SPIdat%>%
+  filter(POPFIT=="Same"|
+         POPFITNOTES=="Above KFH only." & METHODNUMBER ==1
+           )%>%
+  mutate(subpop=ifelse(grepl("Above",POPFITNOTES),"Kalama_above_KFH","Kalama_winter_total"))%>%
+  dplyr::select(SPAWNINGYEAR,SASISTOCKNAME,subpop,tsaej)%>%
+  pivot_wider(names_from = subpop,values_from = tsaej)%>%
+  filter(!is.na(Kalama_above_KFH) & !is.na(Kalama_winter_total))%>%
+  mutate(p_Kalama_above_KFH_only = Kalama_above_KFH/Kalama_winter_total)
+
+
+AppendixTable2<-upperkalamaprop%>%
+  mutate(p_Kalama_above_KFH_only = scales::percent(p_Kalama_above_KFH_only, accuracy=0.1),
+         SPAWNINGYEAR=as.character(SPAWNINGYEAR)
+         )%>%
+  dplyr::rename(spawn_year=SPAWNINGYEAR)%>%
+  flextable() %>% 
+  align(part = "all") %>% # left align
+  set_caption(caption = 'Appendix Table 2. The number and proportion of total winter steelhead spawners in two subpopulation areas of the Kalama River: 1) the upper Kalama above Kalama Falls Hatchery, and 2) The entire Kalama River including areas above and below KFH' , align_with_table = F) %>% 
+  font(fontname = "Calibri (Body)", part = "all") %>% 
+  fontsize(size = 6, part = "body") %>% 
+  theme_booktabs() %>% # default theme
+  autofit()
+
+
+Kalama_winter_total <- upperkalamaprop %>%
+  dplyr::select(spawn_year = SPAWNINGYEAR, p_Kalama_above_KFH_only) %>%
+  mutate(population = "KalamabelowKFH winter") %>%
+  left_join(DF) %>%
   mutate(across(c("pHOS_gam",
                   "pHOS_gam_lower",
                   "pHOS_gam_upper",
@@ -452,9 +482,10 @@ Kalama_winter_total<-DF%>%
                   "pHOS_ss_rw",
                   "pHOS_ss_rw_upper",
                   "pHOS_mom"
-                  ), ~ . * 0.1 #avg portion of Kalama Winter runs spawning below KFH (pHOS 0 above for Winters)
+                  ), ~ . * (1-p_Kalama_above_KFH_only)
   ))%>%
   mutate(HOS=NA,NOS=NA,gear="spawning ground survey and trap",se.fit=NA)%>%
+  dplyr::select(-p_Kalama_above_KFH_only)%>%
   mutate(population="Kalama winter")
 
 
@@ -546,10 +577,11 @@ DF3<-DF%>%
 write.csv(DF3,here::here(paste0("results/summarized_data_and_annual_pHOS_ests_",holders,".csv")),row.names = F)
 
 
-AppendixTable2<-DF3%>%
+AppendixTable3<-DF3%>%
+  mutate(spawn_year=as.character(spawn_year))%>%
   flextable() %>% 
   align(part = "all") %>% # left align
-  set_caption(caption = 'Appendix Table 2. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))', align_with_table = F) %>% 
+  set_caption(caption = 'Appendix Table 3. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))', align_with_table = F) %>% 
   font(fontname = "Calibri (Body)", part = "all") %>% 
   fontsize(size = 6, part = "body") %>% 
   # add footer if you want
@@ -675,14 +707,16 @@ Appendix 1: weighting sub-population estimates to obtain total pHOS estimates
 AppendixTable1
 ```
 
-
-
-Appendix 2: The raw data and annual pHOS estimates for each method for both winter steelhead based on spawning ground surveys, and summer steelhead based on snorkel surveys:
-```{r table 3, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+```{r appendix table 2, message=FALSE, warning=FALSE, results="show", echo=FALSE}
 AppendixTable2
 ```
 
+Appendix 2: The raw data and annual pHOS estimates for each method for both winter steelhead based on spawning ground surveys, and summer steelhead based on snorkel surveys:
+```{r appendix table 3, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+AppendixTable3
+```
+
 Appendix 3: STAN code used to fit the multivariate state space random walk with logit link using a binomial response to the HOS and NOS data from each population to estimate pHOS.
-```{r appendix, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+```{r appendix code, message=FALSE, warning=FALSE, results="show", echo=FALSE}
 noquote(read_lines(here::here("code/binomial_ss_random_walk_model_mv.stan")))
 ```
