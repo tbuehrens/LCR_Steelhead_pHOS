@@ -684,7 +684,7 @@ Figure 1 shows the annual pHOS estimates for each population (or subpopulation f
 print(p1)
 ```
 
-Figure 1 shows the annual pHOS estimates for each population (or sub-population for Kalama below KFH and NF Toutle Green only) based on the GAM model with method of moment estimates plotted for comparison.
+Figure 2 shows the annual pHOS estimates for each population (or sub-population for Kalama below KFH and NF Toutle Green only) based on the GAM model with method of moment estimates plotted for comparison.
 ```{r plot_gam, fig.height=10, fig.width=8, message=FALSE, warning=FALSE, results="show",fig.cap="Figure 2. Estimates of pHOS for Lower Columbia Winter Steelhead by population and year. Method of moment estimates (HOS/(HOS + NOS)) are shown as points where size corresponds to sample size. GAM estimates are shown as an MLE (line) and 95% CI (shading).", echo=FALSE,out.width = '100%'}
 print(p2)
 ```
