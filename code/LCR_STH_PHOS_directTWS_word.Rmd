@@ -543,9 +543,6 @@ DF2<-DF%>%
 
 write.csv(DF2,here::here(paste0("results/5_year_mean_pHOS_",holders,".csv")),row.names = F) 
 
-# DF2%>%     
-#      kbl(caption = 'Table 1. 5-year Mean pHOS by Population. Three estimates are provided: 1) results from the state space random walk model ("mean_pHOS_ss_rw"), 2) results from the GAM analysis ("mean_pHOS_gam"), and 3) 5 year means based on method of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))',digits =3)%>%
-#      kable_classic(full_width = F, html_font = "Cambria")
 
 Table1<-DF2%>%
   flextable() %>% 
