@@ -558,15 +558,17 @@ Table1<-DF2%>%
 
 
 DF3<-DF%>%
-     mutate(pHOS_ss_rw = scales::percent(pHOS_ss_rw,accuracy = 0.1,na.rm=T),
-            pHOS_ss_rw_lower = scales::percent(pHOS_ss_rw_lower,accuracy = 0.1,na.rm=T),
-            pHOS_ss_rw_upper = scales::percent(pHOS_ss_rw_upper,accuracy = 0.1,na.rm=T),
-            pHOS_gam = scales::percent(pHOS_gam,accuracy = 0.1,na.rm=T),
-            pHOS_gam_lower = scales::percent(pHOS_gam_lower,accuracy = 0.1,na.rm=T),
-            pHOS_gam_upper = scales::percent(pHOS_gam_upper,accuracy = 0.1,na.rm=T),
-            pHOS_mom = scales::percent(pHOS_mom,accuracy = 0.1,na.rm=T)
-            )%>%
-     dplyr::select(-se.fit)
+  mutate(pHOS_ss_rw = scales::percent(pHOS_ss_rw,accuracy = 0.1,na.rm=T),
+         pHOS_ss_rw_lower = scales::percent(pHOS_ss_rw_lower,accuracy = 0.1,na.rm=T),
+         pHOS_ss_rw_upper = scales::percent(pHOS_ss_rw_upper,accuracy = 0.1,na.rm=T),
+         pHOS_gam = scales::percent(pHOS_gam,accuracy = 0.1,na.rm=T),
+         pHOS_gam_lower = scales::percent(pHOS_gam_lower,accuracy = 0.1,na.rm=T),
+         pHOS_gam_upper = scales::percent(pHOS_gam_upper,accuracy = 0.1,na.rm=T),
+         pHOS_mom = scales::percent(pHOS_mom,accuracy = 0.1,na.rm=T)
+         )%>%
+  dplyr::select(-se.fit)%>%
+  group_by(population) %>%
+  slice(which(spawn_year >= min(spawn_year[!is.na(pHOS_mom)])))
 
 # DF3%>%
 #      kbl(caption = 'Table 2. Raw Data and PHOS estimates by year and population. Three estimates are provided: 1) results from the state space random walk model ("pHOS_ss_rw") and associate 95% CI, 2) results from the GAM analysis ("mean_pHOS_gam") and associate 95% CI, and 3) results of moment estimates ("mean_pHOS_mom") calculated independently each year: (HOS/(HOS + NOS))' ,digits =3)%>%
@@ -588,6 +590,28 @@ AppendixTable3<-DF3%>%
   rotate(rotation = "tbrl",part='header')%>%
   autofit()
 ```
+
+
+```{r abundance weighted avg, message=FALSE, warning=FALSE, results="show", echo=FALSE}
+database_args<-list(
+    Driver = "PostgreSQL Unicode",
+    Server = Sys.getenv("POSTGRES_SPI_IP"),
+    Database = "FISH",
+    Port = 5433,
+    UID = Sys.getenv("POSTGRES_SPI_UN"),
+    PWD = Sys.getenv("POSTGRES_SPI_PW"),
+    Trusted_Connection = "True"
+    )
+
+SPIdat<-select_table_PostgreSQL(database_args=database_args,SQL="SELECT * FROM spi.vw_ca_nosa_sos;")
+
+SPIdat%>%
+  filter(ESU_DPS=="Steelhead (Lower Columbia River DPS)" & POPFIT
+         )
+
+```
+
+
 
 
 ## Executive Summary
