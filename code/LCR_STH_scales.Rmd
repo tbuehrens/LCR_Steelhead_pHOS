@@ -175,8 +175,8 @@ DF3<-DF%>%
          age_code = gsub("/",".",age_code),
          run_desc_scale = ifelse(grepl('\\+',age_code),"Winter",ifelse(grepl("\\.",age_code),"Summer",NA)),
          month = month(survey_date),
-         spawn_year = ifelse(run_desc_scale == "Winter" & month < 9, year,
-                             ifelse(run_desc_scale == "Winter" & month >= 9, year + 1,
+         spawn_year = ifelse(run_desc_scale == "Winter" & month < 8, year,
+                             ifelse(run_desc_scale == "Winter" & month >= 8, year + 1,
                                     ifelse(run_desc_scale == "Summer" & month < 4, year,
                                            ifelse(run_desc_scale == "Summer" & month >= 4, year + 1, NA
                                            )
