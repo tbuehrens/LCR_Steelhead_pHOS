@@ -123,12 +123,12 @@ SQL1<-
   tws.SCALECARD_FRONT.SAMPLE_TYPE_CATEGORY_LUT_Id,
   tws.SCALECARD_FRONT.Scale_Age_Code, 
   tws.SCALECARD_FRONT.Fork_Length_Meas,
-  tws.AGE_LUT.age_code,
-  tws.AGE_LUT.fw_annuli_txt,
-  tws.AGE_LUT.maiden_sw_annuli_txt,
-  tws.AGE_LUT.total_sw_annuli,
-  tws.AGE_LUT.sy_total_age,
-  tws.AGE_LUT.prior_spawning_count,
+  --tws.AGE_LUT.age_code,
+  --tws.AGE_LUT.fw_annuli_txt,
+  --tws.AGE_LUT.maiden_sw_annuli_txt,
+  --tws.AGE_LUT.total_sw_annuli,
+  --tws.AGE_LUT.sy_total_age,
+  --tws.AGE_LUT.prior_spawning_count,
   tws.STREAM_NAME_LUT.stream_name,
   tws.RUN_LUT.Run_desc
 FROM 
@@ -139,7 +139,7 @@ FROM
   INNER JOIN tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id
   INNER JOIN tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id
   LEFT JOIN tws.STREAM_NAME_LUT ON tws.STREAM_NAME_LUT.stream_lut_id = tws.HEADER.stream_lut_id
-  LEFT JOIN tws.AGE_LUT ON tws.SCALECARD_FRONT.Scale_Age_Code = tws.AGE_LUT.age_lut_id
+  --LEFT JOIN tws.AGE_LUT ON tws.SCALECARD_FRONT.Scale_Age_Code = tws.AGE_LUT.age_lut_id
   LEFT JOIN tws.RUN_LUT ON tws.SCALECARD_BACK.RUN_LUT_Id = tws.RUN_LUT.RUN_LUT_Id
   LEFT JOIN tws.survey_method_lut ON tws.HEADER.survey_method_lut_id = tws.survey_method_lut.survey_method_lut_id
   LEFT JOIN tws.gear_lut ON tws.HEADER.gear_type_lut_id = tws.gear_lut.gear_lut_id
@@ -173,10 +173,26 @@ DF2<-select_table_PostgreSQL(database_args=database_args,SQL=SQL2)%>%
   summarise(mgmtmethodsbasin=first(mgmtmethodsbasin))
 
 
+SQL3<-
+"SELECT *
+ FROM
+  tws.age_lut;
+"
+
+age_lut<-select_table_PostgreSQL(database_args=database_args,SQL=SQL3)%>%
+  as_tibble()%>%
+  rename(scale_age_code=age_lut_id)
+
+
 DF3<-DF%>%
+  mutate(
+         scale_age_code=ifelse(scale_age_code==53 & run_desc=="Summer",42,scale_age_code),
+         scale_age_code=ifelse(scale_age_code==53 & run_desc=="Winter",43,scale_age_code),
+         scale_age_code=ifelse(scale_age_code==52 & run_desc=="Summer",34,scale_age_code),
+         scale_age_code=ifelse(scale_age_code==52 & run_desc=="Winter",35,scale_age_code)
+  )%>%
+  left_join(age_lut,by=join_by(scale_age_code))%>%
   mutate(year = year(survey_date),
-         age_code = str_trim(age_code),
-         age_code = gsub("/",".",age_code),
          run_desc_scale = ifelse(grepl('\\+',age_code),"Winter",ifelse(grepl("\\.",age_code),"Summer",NA)),
          month = month(survey_date),
          spawn_year = ifelse(run_desc_scale == "Winter" & month < 8, year,
