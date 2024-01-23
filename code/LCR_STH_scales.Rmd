@@ -99,6 +99,7 @@ packages_list<-c("dataRetrieval"
 install_or_load_pack(pack = packages_list)
 ```
 
+
 ## Get Raw Data
 In this section, data used in the analysis is loaded and prepared for analysis
 ```{r get_data, message=FALSE, warning=FALSE, results="show"}
@@ -106,7 +107,7 @@ database_args<-list(
   Driver = "PostgreSQL Unicode",
   Server = Sys.getenv("POSTGRES_TWS_IP"),
   Database = "FISH",
-  Port = 5433,
+  Port = 5433, #main server; 5432 is exact mirror..but is read only
   UID = Sys.getenv("POSTGRES_TWS_UN"),
   PWD = Sys.getenv("POSTGRES_TWS_PW"),
   Trusted_Connection = "True"
@@ -114,37 +115,42 @@ database_args<-list(
 
 SQL1<-
 "SELECT 
-  tws.HEADER.Survey_Date, 
+  tws.HEADER.Survey_Date,
+  tws.SURVEY_METHOD_LUT.surveytype,
   tws.MARK_TYPE_LUT.MarkCode, 
   tws.FISH_STATUS_LUT.Description,
-  tws.POINT_LOCATIONS_LUT.short_name, 
+  tws.GEAR_LUT.gear,
   tws.SCALECARD_FRONT.SAMPLE_TYPE_CATEGORY_LUT_Id,
   tws.SCALECARD_FRONT.Scale_Age_Code, 
   tws.SCALECARD_FRONT.Fork_Length_Meas,
-  tws.AGE_LUT.age_code,
-  tws.AGE_LUT.fw_annuli_txt,
-  tws.AGE_LUT.maiden_sw_annuli_txt,
-  tws.AGE_LUT.total_sw_annuli,
-  tws.AGE_LUT.sy_total_age,
-  tws.AGE_LUT.prior_spawning_count,
-  tws.POINT_LOCATIONS_LUT.stream_lut_id,
-  tws.SGS_REACHES_LUT.stream_lut_id,
+  --tws.AGE_LUT.age_code,
+  --tws.AGE_LUT.fw_annuli_txt,
+  --tws.AGE_LUT.maiden_sw_annuli_txt,
+  --tws.AGE_LUT.total_sw_annuli,
+  --tws.AGE_LUT.sy_total_age,
+  --tws.AGE_LUT.prior_spawning_count,
+  tws.STREAM_NAME_LUT.stream_name,
   tws.RUN_LUT.Run_desc
 FROM 
-  tws.STREAM_NAME_LUT RIGHT JOIN ((tws.SGS_REACHES_LUT RIGHT JOIN ((((((tws.HEADER INNER JOIN   
-  tws.SCALECARD_BACK ON tws.HEADER.HEADER_Id = tws.SCALECARD_BACK.HEADER_Id) INNER JOIN 
-  tws.SCALECARD_FRONT ON tws.SCALECARD_BACK.SCALE_CARD_Id = tws.SCALECARD_FRONT.SCALE_CARD_Id) INNER JOIN 
-  tws.SPECIES_LUT ON tws.SCALECARD_BACK.SPECIES_Id = tws.SPECIES_LUT.species_lut_id)) INNER JOIN 
-  tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id) INNER JOIN 
-  tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id) 
-  ON tws.SGS_REACHES_LUT.stream_reach_id = tws.HEADER.STREAM_REACH_Id) LEFT JOIN tws.POINT_LOCATIONS_LUT 
-  ON tws.HEADER.POINT_LOCATIONS_LUT_Id = tws.POINT_LOCATIONS_LUT.point_locations_lut_id) ON 
-  tws.STREAM_NAME_LUT.stream_lut_id = tws.POINT_LOCATIONS_LUT.stream_lut_id
-LEFT JOIN tws.AGE_LUT ON tws.SCALECARD_FRONT.Scale_Age_Code = tws.AGE_LUT.age_lut_id
-LEFT JOIN tws.RUN_LUT ON tws.SCALECARD_BACK.RUN_LUT_Id = tws.RUN_LUT.RUN_LUT_Id
-WHERE (((tws.MARK_TYPE_LUT.MarkCode)='UM') AND ((tws.SPECIES_LUT.species)='Steelhead') AND 
-  ((tws.SCALECARD_FRONT.Scale_Age_Code) Is Not Null))
-ORDER BY tws.MARK_TYPE_LUT.MarkCode DESC , tws.FISH_STATUS_LUT.Description;
+  tws.HEADER
+  INNER JOIN tws.SCALECARD_BACK ON tws.HEADER.HEADER_Id = tws.SCALECARD_BACK.HEADER_Id
+  INNER JOIN tws.SCALECARD_FRONT ON tws.SCALECARD_BACK.SCALE_CARD_Id = tws.SCALECARD_FRONT.SCALE_CARD_Id
+  INNER JOIN tws.SPECIES_LUT ON tws.SCALECARD_BACK.SPECIES_Id = tws.SPECIES_LUT.species_lut_id
+  INNER JOIN tws.MARK_TYPE_LUT ON tws.SCALECARD_FRONT.MARK_TYPE_LUT_Id = tws.MARK_TYPE_LUT.MARK_TYPE_Id
+  INNER JOIN tws.FISH_STATUS_LUT ON tws.SCALECARD_BACK.FISH_STATUS_LUT_Id = tws.FISH_STATUS_LUT.FISH_STATUS_LUT_Id
+  LEFT JOIN tws.STREAM_NAME_LUT ON tws.STREAM_NAME_LUT.stream_lut_id = tws.HEADER.stream_lut_id
+  --LEFT JOIN tws.AGE_LUT ON tws.SCALECARD_FRONT.Scale_Age_Code = tws.AGE_LUT.age_lut_id
+  LEFT JOIN tws.RUN_LUT ON tws.SCALECARD_BACK.RUN_LUT_Id = tws.RUN_LUT.RUN_LUT_Id
+  LEFT JOIN tws.survey_method_lut ON tws.HEADER.survey_method_lut_id = tws.survey_method_lut.survey_method_lut_id
+  LEFT JOIN tws.gear_lut ON tws.HEADER.gear_type_lut_id = tws.gear_lut.gear_lut_id
+WHERE
+  tws.MARK_TYPE_LUT.MarkCode = 'UM' 
+  AND tws.SPECIES_LUT.species = 'Steelhead' 
+  AND tws.SCALECARD_FRONT.Scale_Age_Code IS NOT NULL
+  AND tws.gear_lut.gear IN ('Hook and Line','Weir','Stream Survey','Trap','Seine','IMW','Hatchery','Tangle Net')
+ORDER BY 
+  tws.MARK_TYPE_LUT.MarkCode DESC,
+  tws.FISH_STATUS_LUT.Description;
 "
 
 
@@ -167,16 +173,30 @@ DF2<-select_table_PostgreSQL(database_args=database_args,SQL=SQL2)%>%
   summarise(mgmtmethodsbasin=first(mgmtmethodsbasin))
 
 
+SQL3<-
+"SELECT *
+ FROM
+  tws.age_lut;
+"
+
+age_lut<-select_table_PostgreSQL(database_args=database_args,SQL=SQL3)%>%
+  as_tibble()%>%
+  rename(scale_age_code=age_lut_id)
+
+
 DF3<-DF%>%
-  mutate(data_type = ifelse(!is.na(stream_lut_id),"weir_trap","survey"),
-         stream_lut_id = ifelse(data_type == "weir_trap",stream_lut_id,stream_lut_id.1),
-         year = year(survey_date),
-         age_code = str_trim(age_code),
-         age_code = gsub("/",".",age_code),
+  mutate(
+         scale_age_code=ifelse(scale_age_code==53 & run_desc=="Summer",42,scale_age_code),
+         scale_age_code=ifelse(scale_age_code==53 & run_desc=="Winter",43,scale_age_code),
+         scale_age_code=ifelse(scale_age_code==52 & run_desc=="Summer",34,scale_age_code),
+         scale_age_code=ifelse(scale_age_code==52 & run_desc=="Winter",35,scale_age_code)
+  )%>%
+  left_join(age_lut,by=join_by(scale_age_code))%>%
+  mutate(year = year(survey_date),
          run_desc_scale = ifelse(grepl('\\+',age_code),"Winter",ifelse(grepl("\\.",age_code),"Summer",NA)),
          month = month(survey_date),
-         spawn_year = ifelse(run_desc_scale == "Winter" & month < 9, year,
-                             ifelse(run_desc_scale == "Winter" & month >= 9, year + 1,
+         spawn_year = ifelse(run_desc_scale == "Winter" & month < 8, year,
+                             ifelse(run_desc_scale == "Winter" & month >= 8, year + 1,
                                     ifelse(run_desc_scale == "Summer" & month < 4, year,
                                            ifelse(run_desc_scale == "Summer" & month >= 4, year + 1, NA
                                            )
@@ -187,7 +207,6 @@ DF3<-DF%>%
          )%>%
   dplyr::filter(age_code!="88")%>%
   dplyr::filter(!is.na(run_desc_scale))%>%
-  dplyr::select(-c("stream_lut_id.1"))%>%  
   left_join(DF2)
 
 
