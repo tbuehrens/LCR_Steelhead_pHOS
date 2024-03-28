@@ -207,13 +207,17 @@ DF3<-DF%>%
          )%>%
   dplyr::filter(age_code!="88")%>%
   dplyr::filter(!is.na(run_desc_scale))%>%
-  left_join(DF2)
+  left_join(DF2)%>%
+  mutate(
+    NOAA_population = ifelse(mgmtmethodsbasin=="Cedar", "NF Lewis",mgmtmethodsbasin),
+    NOAA_population = ifelse(mgmtmethodsbasin=="Green", "NF Toutle",mgmtmethodsbasin),
+  )
 
 
 write.csv(DF3,here::here("results/Raw_UM_Steelhead_Scale_data.csv"),row.names = F)
 
 DF3%>%
-  group_by(spawn_year,mgmtmethodsbasin)%>%
+  group_by(spawn_year,NOAA_population)%>%
   summarise(n=n())%>%
   pivot_wider(values_from = n,names_from = spawn_year)%>%
   kbl(caption = 'Table 1. Sample sizes of aged and entered UM steelhead scales by spawn year and management methods basin in TWS',digits =3)%>%
@@ -221,11 +225,11 @@ DF3%>%
 
 
 DF3%>%
-  group_by(spawn_year,mgmtmethodsbasin,run_desc_scale)%>%
+  group_by(spawn_year,NOAA_population,run_desc_scale)%>%
   summarise(n=n())%>%
   arrange(spawn_year)%>%
   pivot_wider(values_from = n,names_from = spawn_year)%>%
-  arrange(mgmtmethodsbasin,run_desc_scale)%>%
+  arrange(NOAA_population,run_desc_scale)%>%
   kbl(caption = 'Table 2. Sample sizes of aged and entered UM steelhead scales by spawn year, management methods basin, and scale-based run type in TWS',digits =3)%>%
   kable_classic(full_width = F, html_font = "Cambria")
 
