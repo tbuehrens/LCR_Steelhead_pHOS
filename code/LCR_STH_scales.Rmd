@@ -213,7 +213,7 @@ DF3<-DF%>%
     NOAA_population = ifelse(mgmtmethodsbasin=="Green", "NF Toutle",mgmtmethodsbasin),
   )
 
-
+if(!dir.exists(here::here("results"))){dir.create(here::here("results"))}
 write.csv(DF3,here::here("results/Raw_UM_Steelhead_Scale_data.csv"),row.names = F)
 
 DF3%>%
