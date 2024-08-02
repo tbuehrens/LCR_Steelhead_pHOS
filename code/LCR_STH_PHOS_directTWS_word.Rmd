@@ -406,7 +406,7 @@ SPIdat<-select_table_PostgreSQL(database_args=database_args,SQL="SELECT * FROM s
   filter(SASISTOCKNAME %in% c("Kalama Winter Steelhead","North Fork Toutle Winter Steelhead"))
 
 lowertoutleprop<-SPIdat%>%
-  filter(POPFITNOTES=="Green River Tributary index only - not a total population estimate" |
+  filter(POPFITNOTES=="Green River redd count expansion on MS and Tributary indexes" |
          POPFITNOTES=="Total Escapement Estimate MS and Trib Surveys and NFT FCF Trap Counts"  
            )%>%
   mutate(subpop=ifelse(grepl("Green",POPFITNOTES),"NF_Toutle_Green_only","NF_Toutle_Total"))%>%
