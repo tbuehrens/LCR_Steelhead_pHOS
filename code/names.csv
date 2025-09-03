@@ -1,0 +1,18 @@
+population,order,Run,Population,MAstandard
+Coweeman winter,1,Winter,Coweeman,0.05
+EF Lewis winter,2,Winter,EF Lewis,NA
+Elochoman Skamokawa winter,3,Winter,Elochoman/Skamokawa,NA
+Grays Chinook winter,4,Winter,Grays/Chinook,NA
+Kalama winter,5,Winter,Kalama,0.05
+KalamabelowKFH winter,6,Winter,Kalama Below KFH,NA
+Lower Gorge winter,7,Winter,Lower Gorge,NA
+Mill Abernathy Germany Coal winter,8,Winter,Mill/Abernathy/Germany/Coal,NA
+NFToutleGreenonly winter,10,Winter,NF Toutle Green R. Only,NA
+NF_Toutle winter,9,Winter,NF Toutle,0.05
+SF Toutle winter,11,Winter,SF Toutle,0.05
+Upper Gorge winter,13,Winter,Upper Gorge,NA
+Washougal winter,14,Winter,Washougal,0.05
+Kalama River summer,15,Summer,Kalama,0.05
+Lewis River  East Fork summer,16,Summer,EF Lewis,NA
+Washougal River summer,17,Summer,Washougal,0.05
+Wind River summer,18,Summer,Wind,NA
