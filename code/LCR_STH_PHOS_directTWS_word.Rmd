@@ -3,6 +3,7 @@ title: 'Estimates of Lower Columbia steelhead pHOS: Report to NOAA Fisheries'
 author: Thomas Buehrens (Thomas.Buehrens@dfw.wa.gov),  Jeremy Wilson (Jeremy.Wilson@dfw.wa.gov), Steve Gray (Steven.Gray@dfw.wa.gov), Caleb Jetter (Caleb.Jetter@dfw.wa.gov), and Jim Scott (Jim.Scott@dfw.wa.gov)
 output:
   word_document:
+    reference_docx: reference.docx
 always_allow_html: true
 knit: (function(inputFile, encoding) {
   rmarkdown::render(inputFile, encoding = encoding, output_dir = "../results") })
@@ -81,10 +82,13 @@ packages_list<-c("dataRetrieval"
                  ,"rstan"
                  ,"reshape2"
                  ,"DBI"
+                 ,"odbc"
                  ,"flextable"
                  ,"janitor"
                  )
 install_or_load_pack(pack = packages_list)
+
+#remotes::install_github("Chicago/RSocrata")
 
 ```
 
@@ -92,6 +96,7 @@ install_or_load_pack(pack = packages_list)
 ```{r user inputs, message = FALSE, warning = FALSE,results = "hide",echo=FALSE}
 include_holders = T
 Y <- 2024
+MA <- 2017
 ```
 
 
@@ -228,7 +233,7 @@ DF<-DF%>%
                spawn_year= ifelse(month < 12, year, year + 1)
   )%>%
   dplyr::filter(month >11 | month <7)%>% #exclude data from 6/30 -12/1 each year
-  dplyr::filter(spawn_year!=Y+1)%>% #not a complete year yet
+  dplyr::filter(spawn_year<Y+1)%>% #not a complete year yet
   dplyr::group_by(spawn_year,population,mark,gear)%>%
   dplyr::summarise(count = sum(count))%>%
   pivot_wider(names_from = mark, values_from = count,values_fill = 0)%>%
@@ -298,15 +303,12 @@ DF<-DF%>%
     group_by(population,spawn_year,markcode,gear)%>%
     summarise(count_num=sum(count_num))%>%
     filter(markcode%in%c("UM","AD"))%>%
-    dplyr::filter(spawn_year!=Y+1)%>%
+    dplyr::filter(spawn_year<Y+1)%>%
     mutate(markcode = ifelse(markcode=="AD","HOS","NOS"))%>%
     pivot_wider(id_cols=c("spawn_year","population"),names_from = markcode,values_from = count_num)%>%
     mutate(HOS=as.integer(ifelse(is.na(HOS),0,HOS)),
-           NOS=as.integer(ifelse(is.na(NOS),0,NOS)
-                          )
-    )%>%
-    mutate(pHOS_mom = (HOS/(HOS+NOS)))
-  )%>%
+           NOS=as.integer(ifelse(is.na(NOS),0,NOS)),
+           pHOS_mom = (HOS/(HOS+NOS))))%>%
   arrange(population,spawn_year)%>%
   ungroup()%>%
   mutate(
@@ -353,6 +355,27 @@ saveRDS(m1_stan,here::here(paste0("results/stan_fit_",holders,".rds")))
 
 
 results<-extract(m1_stan)
+
+# random draws
+df<-data.frame(reshape2::melt(results$p_all))%>%
+  as_tibble()%>%
+  dplyr::rename(spawn_year = Var2,
+           pop_ind = Var3
+           )%>%
+  mutate(spawn_year = spawn_year + min(DF$spawn_year) - 1)%>%
+  left_join(DF%>%
+             group_by(population)%>%
+             summarise(population = first(population), pop_ind = first(pop_ind))
+           )%>%
+  dplyr::select(-pop_ind)%>%
+  group_by(population,spawn_year)%>%
+  summarize(draws = list(sample(value, size = 100, replace = T)), .groups = "drop")%>%
+  unnest_longer(draws, indices_include = T)%>%
+  filter(spawn_year>=2005, !str_detect(population,"summer"))%>%
+  spread(key = draws_id, value = draws)
+
+write_rds(df, "draws_v2.rds")
+
 DF<-data.frame(reshape2::melt(results$p_all))%>%
   as_tibble()%>%
   dplyr::rename(spawn_year = Var2,
@@ -374,7 +397,7 @@ DF<-data.frame(reshape2::melt(results$p_all))%>%
   left_join(DF%>%dplyr::select(-pop_ind),by=c("spawn_year","population"))%>%
   ungroup()%>%
   arrange(population, spawn_year)
-  
+
 ```
 
 ```{r Analysis_v2, message=FALSE, warning=FALSE, results="show", echo=FALSE}
@@ -404,8 +427,24 @@ SPIdat <- read.socrata(
  password  = Sys.getenv("SPI_PW")) %>%
  filter(commonpopname %in% c("Kalama Winter Steelhead","North Fork Toutle Winter Steelhead"))
 
+# include jacks (<55)?
+SQL3 <- paste0("SELECT * FROM tws.mvw_fish WHERE return_yr =",Y,
+               " AND species = 'Steelhead' AND run = 'Winter'
+               AND survey_location = 'NF Toutle FCF' AND disposition = 'Upstream';")
 
-lowertoutlemissing <- read.csv("NFToutle_missingdata.csv")
+trapcountstoutle <- select_table_PostgreSQL(database_args=database_args,SQL=SQL3) %>%
+  reframe(spawningyear = Y, commonpopname = "NF Toutle (winter)",
+          subpop = "NF_Toutle_Total", tsaej = as.numeric(sum(fish_count)))
+
+lowertoutlemissing <- read.csv(paste0("NFToutle_missingdata_",MA,"_BiOp.csv")) %>%
+  filter(spawningyear<Y+1) %>%
+  rbind(trapcountstoutle) %>%
+  group_by(spawningyear) %>%
+  mutate(tsaej = ifelse(is.na(tsaej),sum(tsaej,na.rm=T),tsaej)) %>%
+  ungroup() %>%
+  filter(row_number() <= n()-1)
+
+lowertoutlemissing[lowertoutlemissing==0] <- NA
 
 lowertoutleprop <- SPIdat %>%
   filter(popfitnotes=="Green River redd count expansion on MS and Tributary indexes" |
@@ -444,7 +483,8 @@ NF_Toutle_winter_total <- lowertoutleprop %>%
   mutate(population="NF_Toutle winter")
 
 
-upperkalamamissing <- read.csv("Kalama_missingdata.csv")
+upperkalamamissing <- read.csv("Kalama_missingdata_2017_BiOp.csv") %>%
+  filter(spawningyear<Y+1)
 
 upperkalamaprop <- SPIdat %>%
   filter(commonpopname=="Kalama Winter Steelhead") %>%
@@ -461,6 +501,19 @@ upperkalamaprop <- SPIdat %>%
          `Kalama R. Above KFH`=Kalama_above_KFH,
          `Kalama R. Total`=Kalama_winter_total) %>%
   select(`Spawn Year`,commonpopname,`Kalama R. Above KFH`,`Kalama R. Total`,`Prop Above KFH`)
+
+# upperkalamamissing <- read.csv("Kalama_missingdata_2024_BiOp.csv")
+# 
+# upperkalamaprop <- upperkalamamissing %>%
+#   select(-c(source)) %>%
+#   pivot_wider(names_from = subpop,values_from = tsaej) %>%
+#   mutate(`Prop Above KFH` = round(as.numeric(Kalama_above_KFH)/as.numeric(Kalama_winter_total), digits=3),
+#          spawningyear = as.double(spawningyear)) %>%
+#   arrange(spawningyear) %>%
+#   rename(`Spawn Year`=spawningyear,
+#          `Kalama R. Above KFH`=Kalama_above_KFH,
+#          `Kalama R. Total`=Kalama_winter_total) %>%
+#   select(`Spawn Year`,commonpopname,`Kalama R. Above KFH`,`Kalama R. Total`,`Prop Above KFH`)
 
 
 Kalama_winter_total <- upperkalamaprop %>%
@@ -482,7 +535,7 @@ Kalama_winter_total <- upperkalamaprop %>%
 
 
 DF<-DF%>%
-  filter(spawn_year!=Y+1) %>%
+  filter(spawn_year<Y+1) %>%
   bind_rows(NF_Toutle_winter_total)%>%
   bind_rows(Kalama_winter_total)
 
@@ -490,7 +543,7 @@ DF<-DF%>%
 
 ## Executive Summary
 
-Hatchery steelhead provide valuable angling opportunities and can be used to supplement natural-origin populations but may also pose risks to natural-origin populations. As a result, the proportion of hatchery-origin spawners (pHOS) is often monitored as a measure of genetic and ecological interactions between hatchery-origin and natural-origin steelhead. We used observations of hatchery- and natural-origin spawners during spawning ground surveys (winter steelhead) and snorkel surveys (summer steelhead) to develop estimates of pHOS for steelhead populations in the Washington State portion of the lower Columbia River. Three models were used to estimate pHOS: 1) a multivariate state-space model fit to the count data using a logit link function and a binomial response using STAN [**rstan**](https://mc-stan.org/users/interfaces/rstan), 2) a Generalized Additive Model fit to the count data using a logit link function and a binomial response where a thin plate spline is fit independently to each population’s data using the R package [**mgcv**](https://cran.r-project.org/web/packages/mgcv/mgcv.pdf), and 3) method of moment estimates where pHOS is calculated annually using the count data from each watershed for each population in years data are available. Results from each method were compared to determine the most appropriate estimates to report. The multivariate state-space model produced the most robust estimates. The five-year mean pHOS (spawn years `r Y-4`--`r Y`) was within Mitchell Act Biological Opinion (MA BiOp) standards for all populations except for Washougal Winter Steelhead and pHOS was unknown for Salmon Creek Winter Steelhead. Estimates for Kalama and NF Toutle winter run populations are reported both for below-dam subpopulations as well as the whole populations. Results currently exclude populations within the Cowlitz and Lewis basins for which estimates are developed as part of other reporting processes associated with dam operator licenses. Our results suggest that actions to reduce pHOS (gene banks, reductions in hatchery plants, changes in release locations of hatchery plants, and changes to recycling protocols) appear to have largely achieved pHOS targets identified in the MA BiOp.
+Hatchery steelhead provide valuable angling opportunities and can be used to supplement natural-origin populations but may also pose risks to natural-origin populations. As a result, the proportion of hatchery-origin spawners (pHOS) is often monitored as a measure of genetic and ecological interactions between hatchery-origin and natural-origin steelhead. We used observations of hatchery- and natural-origin spawners during spawning ground surveys (winter steelhead) and snorkel surveys (summer steelhead) to develop estimates of pHOS for steelhead populations in the Washington State portion of the lower Columbia River. Three models were used to estimate pHOS: 1) a multivariate state-space model fit to the count data using a logit link function and a binomial response using STAN [**rstan**](https://mc-stan.org/users/interfaces/rstan), 2) a Generalized Additive Model fit to the count data using a logit link function and a binomial response where a thin plate spline is fit independently to each population’s data using the R package [**mgcv**](https://cran.r-project.org/web/packages/mgcv/mgcv.pdf), and 3) method of moment estimates where pHOS is calculated annually using the count data from each watershed for each population in years data are available. Results from each method were compared to determine the most appropriate estimates to report. The multivariate state-space model produced the most robust estimates. The five-year mean pHOS (spawn years `r Y-4`--`r Y`) was within `r MA` Mitchell Act Biological Opinion (MA BiOp) standards for all populations except for Washougal Winter Steelhead and pHOS was unknown for Salmon Creek Winter Steelhead. Estimates for Kalama and NF Toutle winter run populations are reported both for below-dam subpopulations as well as the whole populations. Results currently exclude populations within the Cowlitz and Lewis basins for which estimates are developed as part of other reporting processes associated with dam operator licenses. Our results suggest that actions to reduce pHOS (gene banks, reductions in hatchery plants, changes in release locations of hatchery plants, and changes to recycling protocols) appear to have largely achieved pHOS targets identified in the `r MA` MA BiOp.
 
 \newpage
 
@@ -502,7 +555,7 @@ One of the earliest and largest efforts to enhance recreational and commercial f
 
 In recent decades, extensive research has focused on hatchery-produced salmon and steelhead (i.e., fish hatched and reared until ocean-ready juvenile migrant stage in captivity, hereafter “hatchery-origin”) and their interactions with naturally-produced salmon and steelhead (i.e., fish born in the natural environment, hereafter “natural-origin”). These studies have identified both the benefits generated by hatcheries and the conservation risks posed to natural-origin populations (Naish et al. 2007). Several studies have identified that hatchery spawners reduced fitness when reproducing in natural environments compared to their natural-origin counterparts (Araki et al. 2008; Chilcote et al. 2011; Christie et al. 2014) and interbreeding between hatchery- and natural-origin spawners can reduce the overall fitness of a population (Ford 2002). Concerns over the conservation status of natural-origin populations and the risks associated with hatcheries have led to a shift in policy focus, aiming to balance fishery augmentation benefits with negative conservation consequences.
 
-The Washington Department of Fish and Wildlife initiated measures in the early 2000s to minimize interactions between hatchery- and natural-origin salmon and steelhead. The Statewide Steelhead Management Plan, approved by the Washington Fish and Wildlife Commission in 2008, outlined various policies, strategies, and actions (WDFW 2008), including the implementation of steelhead gene banks (i.e., rivers where no hatchery releases occur and wild steelhead populations are largely protected from the effects of hatchery programs) as a recovery strategy. Multiple gene banks were established in the lower Columbia River region by the mid-2010s, including those in the Grays, North Fork Toutle/Green, East Fork Lewis, and Wind rivers. Subsequently, with the release of the Mitchell Act Biological Opinion (MA BiOp) in 2017, additional measures were implemented to reduce hatchery- and natural-origin interactions. These measures included discontinuing the release of out-of-ESU stocks for hatchery programs (e.g., Chambers Creek Winter Steelhead), developing early-timed hatchery winter steelhead from local stocks (e.g., Kalama Early Winter Steelhead), eliminating segregated programs in favor of integrated hatchery programs (e.g., Kalama summers), and establishing standards for the proportion of hatchery-origin spawners (pHOS) in several basins within the LCR. In this report, we develop census pHOS (defined as the number of hatchery-origin spawners divided by the total number of spawners, hereafter referred to as pHOS) estimates for all MA BiOp summer and winter steelhead populations in the Washington State portion of the LCR.
+The Washington Department of Fish and Wildlife initiated measures in the early 2000s to minimize interactions between hatchery- and natural-origin salmon and steelhead. The Statewide Steelhead Management Plan, approved by the Washington Fish and Wildlife Commission in 2008, outlined various policies, strategies, and actions (WDFW 2008), including the implementation of steelhead gene banks (i.e., rivers where no hatchery releases occur and wild steelhead populations are largely protected from the effects of hatchery programs) as a recovery strategy. Multiple gene banks were established in the lower Columbia River region by the mid-2010s, including those in the Grays, North Fork Toutle/Green, East Fork Lewis, and Wind rivers. Subsequently, with the release of the Mitchell Act Biological Opinion (MA BiOp) in 2017, additional measures were implemented to reduce hatchery- and natural-origin interactions. These measures included discontinuing the release of out-of-ESU stocks for hatchery programs (e.g., Chambers Creek Winter Steelhead), developing early-timed hatchery winter steelhead from local stocks (e.g., Kalama Early Winter Steelhead), eliminating segregated programs in favor of integrated hatchery programs (e.g., Kalama summers), and establishing standards for the proportion of hatchery-origin spawners (pHOS) in several basins within the LCR. In this report, we develop census pHOS (defined as the number of hatchery-origin spawners divided by the total number of spawners, hereafter referred to as pHOS) estimates for summer and winter steelhead populations in the Washington State portion of the LCR.
 
 \
 
@@ -614,8 +667,8 @@ Table1 <- DF %>%
           MOM = percent(mean(pHOS_mom,na.rm=T),accuracy = 0.1),
           GAM = percent(mean(pHOS_gam),accuracy = 0.1)) %>%
   left_join(read.csv("names.csv")) %>%
-  mutate(MAstandard = percent(MAstandard)) %>%
-  add_row(Run="Winter",order=12,Population="Salmon Creek",SSRW=NA,GAM=NA,MOM=NA,MAstandard="5%") %>%
+  mutate(MAstandard = ifelse(!is.na(MAstandard),paste0("≤", percent(MAstandard)),MAstandard)) %>%
+  add_row(Run="Winter",order=12,Population="Salmon Creek",SSRW=NA,GAM=NA,MOM=NA,MAstandard="≤5%") %>%
   select(Run,order,Population,SSRW,GAM,MOM,MAstandard)
 
 winter <- Table1 %>%
@@ -635,13 +688,13 @@ summer <- Table1 %>%
 
 All three methods (SSRW, GAM, and MOM) produced estimates of pHOS. The high number of clip status observations from snorkel surveys resulted in summer steelhead populations estimates being well-aligned between the three methods. However, for winter steelhead, observations of clip status from spawning ground surveys were limited in most populations and years due to the low number of carcasses recovered and live fish observed. This made MOM estimates less reliable year to year as we were not able to generate estimates for ~25% of winter steelhead population and year combinations as they had no observations (Table B1). Both GAM and SSRW methods allowed us to generate estimates for populations and years with no direct observations by “borrowing” information from adjacent years and watersheds. SSRW estimates were closer to the MOM estimates in comparison to GAM estimates (Figure 2) and required no choices of hyperparameters (number and location of knots, penalty order, spline basis function). For these reasons, we have chosen to report the state space random walk (SSRW) estimates as our “best” estimates in WDFW databases until or unless further evaluation suggests better fit for alternative smoothers like the GAM estimates.
 
-For winter steelhead populations, pHOS was variable across populations. Populations or subpopulations with the lowest pHOS were the `r winter$Population[1]` (five-year mean of `r percent(winter$SSRW[1],accuracy = 0.1)`), `r winter$Population[2]` (five-year mean of `r percent(winter$SSRW[2],accuracy = 0.1)`), and `r winter$Population[3]` (five-year mean of `r percent(winter$SSRW[3],accuracy = 0.1)`), while `r winter$Population[nrow(winter)]` (five-year mean of `r percent(winter$SSRW[nrow(winter)],accuracy = 0.1)`), `r winter$Population[nrow(winter)-1]` (five-year mean of `r percent(winter$SSRW[nrow(winter)-1],accuracy = 0.1)`), and `r winter$Population[nrow(winter)-2]` (five-year mean of `r percent(winter$SSRW[nrow(winter)-2],accuracy = 0.1)`) had the highest levels of pHOS (Table 1). Estimates of pHOS using a five-year mean were within MA BiOp standards for all winter steelhead populations except for Washougal Winter Steelhead. The proportion of hatchery-origins spawners is unknown for the Salmon Creek Winter Steelhead population as no monitoring occurred there.
+For winter steelhead populations, pHOS was variable across populations. Populations or subpopulations with the lowest pHOS were the `r winter$Population[1]` (five-year mean of `r percent(winter$SSRW[1],accuracy = 0.1)`), `r winter$Population[2]` (five-year mean of `r percent(winter$SSRW[2],accuracy = 0.1)`), and `r winter$Population[3]` (five-year mean of `r percent(winter$SSRW[3],accuracy = 0.1)`), while `r winter$Population[nrow(winter)]` (five-year mean of `r percent(winter$SSRW[nrow(winter)],accuracy = 0.1)`), `r winter$Population[nrow(winter)-1]` (five-year mean of `r percent(winter$SSRW[nrow(winter)-1],accuracy = 0.1)`), and `r winter$Population[nrow(winter)-2]` (five-year mean of `r percent(winter$SSRW[nrow(winter)-2],accuracy = 0.1)`) had the highest levels of pHOS (Table 1). Estimates of pHOS using a five-year mean were within `r MA` MA BiOp standards for all winter steelhead populations except for Washougal Winter Steelhead. The proportion of hatchery-origins spawners is unknown for the Salmon Creek Winter Steelhead population as no monitoring occurred there.
 
-For summer steelhead populations, the pHOS was lowest in the `r summer$Population[1]` (five-year mean of `r percent(summer$SSRW[1],accuracy = 0.1)`) while the `r summer$Population[nrow(summer)]` had the highest (five-year mean of `r percent(summer$SSRW[nrow(summer)],accuracy = 0.1)`) (Table 1). Estimates of pHOS using a five-year mean was within MA BiOp standards for all summer steelhead populations except for Kalama Summer Steelhead.
+For summer steelhead populations, the pHOS was lowest in the `r summer$Population[1]` (five-year mean of `r percent(summer$SSRW[1],accuracy = 0.1)`) while the `r summer$Population[nrow(summer)]` had the highest (five-year mean of `r percent(summer$SSRW[nrow(summer)],accuracy = 0.1)`) (Table 1). Estimates of pHOS using a five-year mean was within `r MA` MA BiOp standards for all summer steelhead populations except for Kalama Summer Steelhead.
 
 \newpage
 
-```{r pred-fig, echo=FALSE, warning=FALSE, message=FALSE, fig.width=6.5, fig.height=9}
+```{r pred-fig, echo=FALSE, warning=FALSE, message=FALSE, fig.width=6.5, fig.height=8}
 
 ggplot(DF %>% filter(spawn_year>=2010) %>% left_join(read.csv("names.csv")) %>%
          mutate(Pop = paste0(Population," (",Run,")")),
@@ -671,7 +724,7 @@ Figure 2. Comparison of methods used to generate annual estimates of the proport
 
 \newpage
 
-Table 1. Five-year mean estimates of proportion of hatchery-origin steelhead spawners by population. Three estimates are provided: 1) results from the state space random walk model (SSRW), 2) results from the GAM analysis (GAM), and 3) results from method of moment estimates (MOM). Italics and indentation indicate subpopulation estimates. Estimates that exceed Mitchell Act standards are bolded.
+Table 1. Five-year mean estimates of proportion of hatchery-origin steelhead spawners by population. Three estimates are provided: 1) results from the state space random walk model (SSRW), 2) results from the GAM analysis (GAM), and 3) results from method of moment estimates (MOM). Italics and indentation indicate subpopulation estimates. SSRW estimates that exceed `r MA` Mitchell Act BiOp standards are bolded.
 ```{r table-1, echo=FALSE, warning=FALSE, message=FALSE}
 
 flextable(Table1 %>%
@@ -681,16 +734,16 @@ flextable(Table1 %>%
   select(-order)
   ) %>%
   colformat_num(na_str = "NA") %>%
-  set_header_labels(MAstandard = "MA Standard") %>%
+  set_header_labels(MAstandard = "MA pHOS Standard") %>%
   align(i = NULL, j = 1:2, align = "left", part = "all") %>%
   align(i = NULL, j = 3:6, align = "center", part = "all") %>%
   width(width = c(2,6,2,2,2,2.5), unit = "cm") %>%
-  line_spacing(space = 1, part = "body") %>%
+  line_spacing(space = 0.75, part = "body") %>%
   italic(i = c(7,11), j = c(2,2)) %>%
-  bold(i = 15, j = 3:5) %>%
+  bold(i = 15, j = 3) %>%
   padding(i = c(7,11), j = c(2,2), padding.left = 30) %>%
   footnote(i = c(6,17), j = 6, value = as_paragraph(
-    c("pHOS limits on the Kalama in the MA BiOp are 5% from segregated stocks. For Kalama summer runs, all production is integrated. Methods have not yet been developed to identify what proportion of pHOS for Kalama summer steelhead is from in-basin integrated stocks versus out-of-basin strays, but it is assumed that the vast majority is from in-basin programs. Therefore, the standard of 5% from segregated stocks (which are not produced in-basin) is currently assumed to be met.")),
+    c("In the 2017 MA BiOp, pHOS standards for the Kalama are 5% from segregated stocks. For Kalama summer runs, all production is integrated. Methods have not yet been developed to identify what proportion of pHOS for Kalama summer steelhead is from in-basin integrated stocks versus out-of-basin strays, but it is assumed that the vast majority are from in-basin programs. Therefore, the standard of 5% from segregated stocks (which are not produced in-basin) is currently assumed to be met.")),
     ref_symbols = "1", part = "body") %>%
   footnote(i = c(7,11), j = 6, value = as_paragraph(
     c("Mitchell Act pHOS standards are not provided for subpopulations and is instead provided for the corresponding full populations.")),
@@ -702,15 +755,15 @@ flextable(Table1 %>%
 
 ## Discussion
 
-The dual objective of recovering ESA-listed populations while maintaining hatchery production for productive and valuable fisheries is reliant on limiting hatchery influence in wild populations. The MA BiOp establishes pHOS standards to ensure compliance for MA-funded hatchery operations. We used data from both snorkel surveys and spawning ground surveys to develop annual estimates of pHOS and compared three different analytical approaches (SSRW, GAM, and MOM) to determine the most robust method.
+The dual objective of recovering ESA-listed populations while maintaining hatchery production for productive and valuable fisheries is reliant on limiting hatchery influence in wild populations. The `r MA` MA BiOp establishes pHOS standards to ensure compliance for MA-funded hatchery operations. We used data from both snorkel surveys and spawning ground surveys to develop annual estimates of pHOS and compared three different analytical approaches (SSRW, GAM, and MOM) to determine the most robust method.
 
 When using data from snorkel surveys, the three different analytical methods yielded similar results due to the large number of observations of clip status. In comparison, when using data from spawning ground surveys, pHOS estimates from the three models were more sensitive to model selection due to data sparseness. Similarly, the precision of our pHOS estimates was substantially lower when relying solely on spawning ground surveys (e.g., most winter steelhead populations) in comparison to snorkel surveys (e.g., all summer steelhead populations). Both of the more complex models (SSRW and GAM) provided methods of smoothing interannual variability in pHOS estimates due to small samples sizes. This was particularly useful when analyzing observations from spawning ground surveys to make annual estimates.  However, the raw method of moments estimates differed little from smoothing model estimates when generating five-year means.
 
-Overall, actions to reduce pHOS (e.g., gene banks, reductions in hatchery plants, changes in release locations of hatchery plants, and changes to recycling protocols) appear to have largely achieved targeted pHOS standards under the MA BiOp. While pHOS levels are higher than the MA BiOp pHOS standards for Washougal winter steelhead, the program is proposed to transition in both size and broodstock source to address this issue.
+Overall, actions to reduce pHOS (e.g., gene banks, reductions in hatchery plants, changes in release locations of hatchery plants, and changes to recycling protocols) appear to have largely achieved targeted pHOS standards under the `r MA` MA BiOp. While pHOS levels are higher than the `r MA` MA BiOp pHOS standards for Washougal winter steelhead, the segregated winter steelhead program has been eliminated under the new 2024 MA BiOp (NMFS 2024). A new integrated winter steelhead program has been permitted but has not been implemented due to budget constraints.
 
-For Kalama summer steelhead, the five-year mean pHOS was higher than the goal identified in the MA BiOp (<5.0% from segregated stocks). However, the pHOS standard in the BiOp standard is specifically identified for hatchery spawners from segregated programs. The Skamania stock summer steelhead program in the Kalama River was eliminated with issuance of the MA BiOp but we still had returning adults from that program through spawn year 2020. As a result, we still saw pHOS levels exceeding 35-40% through spawn year 2019 then saw a substantial drop in the years following spawn year 2019. Methods have not yet been developed to identify what proportion of pHOS for Kalama summer steelhead is from in-basin integrated stocks vs. out of basin strays but it is assumed that the vast majority is from in-basin programs, and therefore the standard of 5% from segregated stocks (which are not produced in-basin) is currently assumed to be met. The Hatchery Scientific Review Group (HSRG) recommended a pHOS standard of less than 30% for primary populations with integrated hatchery programs (Paquet 2011); a standard that is currently being met for this population.
+For Kalama summer steelhead, the five-year mean pHOS was higher than the goal identified in the `r MA` MA BiOp (<5.0% from segregated stocks). However, the pHOS standard in the BiOp specifically identified hatchery spawners from segregated programs. The Skamania stock summer steelhead program in the Kalama River was eliminated with issuance of the 2017 MA BiOp but we still had returning adults from that program through spawn year 2020. As a result, we still saw pHOS levels exceeding 35-40% through spawn year 2019 then saw a substantial drop in the years following spawn year 2019. Methods have not yet been developed to identify what proportion of pHOS for Kalama summer steelhead is from in-basin integrated stocks vs. out of basin strays but it is assumed that the vast majority is from in-basin programs, and therefore the standard of 5% from segregated stocks (which are not produced in-basin) is currently assumed to be met. The Hatchery Scientific Review Group (HSRG) recommended a pHOS standard of less than 30% for primary populations with integrated hatchery programs (Paquet 2011); a standard that is currently being met for this population.
 
-The proportion of hatchery-origin spawners was higher than 5% in one primary Coast stratum population (Mill/Abernathy/Germany/Coal). However, there are no established pHOS standards in the MA BiOp for the SW Washington DPS (Grays, Skamokawa/Elochoman, and MAG) as that DPS is not federally listed. The sunsetting of the USFWS conservation hatchery program a few years back on MAG is expected to result in lower pHOS relative to the past 5-year average on MAG. 
+The proportion of hatchery-origin spawners was higher than 5% in one primary Coast stratum population (Mill/Abernathy/Germany/Coal). However, there are no established pHOS standards in the `r MA` MA BiOp for the SW Washington DPS (Grays, Skamokawa/Elochoman, and MAG) as that DPS is not federally listed. The sunsetting of the USFWS conservation hatchery program on MAG is expected to result in lower pHOS relative to the past 5-year average on MAG. 
 
 \
 
@@ -744,9 +797,11 @@ Naish, K. A., J. E. Taylor III, P. S. Levin, T. P. Quinn, J. R. Winton, D. Huppe
 
 National Oceanic and Atmospheric Administration (NOAA). 2016. 5-year review: Summary and evaluation of Lower Columbia River Chinook, Columbia River Chum, Lower Columbia River Coho, and Lower Columbia River Steelhead. Portland, OR.
 
-National Oceanic and Atmospheric Administration (NOAA). 2017. Endangered Species Act Section 7(a)(2) Biological Opinion (BiOp) and Magnuson-Stevens Fishery Conservation and Management Act Essential Fish Habitat Consultation on NOAAs National Marine Fisheries Service’s Implementation of the Mitchell Act Final Environment Impact Statement preferred alternative and administration of Mitchell Act hatchery funding. NMFS Consultation Number: NWR-2014-697. 
+National Oceanic and Atmospheric Administration (NOAA). 2017. Endangered Species Act Section 7(a)(2) Biological Opinion (BiOp) and Magnuson-Stevens Fishery Conservation and Management Act Essential Fish Habitat Consultation on NOAAs National Marine Fisheries Service’s Implementation of the Mitchell Act Final Environment Impact Statement preferred alternative and administration of Mitchell Act hatchery funding. NMFS Consultation Number: NWR-2014-697.
 
-Noble, M., P. Duncan, D. Perry, K. Prosper, D. Rose, S. Schnierer, G. Tipa, E. Williams, R. Woods, and J. Pittock. 2016. Culturally significant fisheries: keystones for management of freshwater social-ecological systems. Ecology and Society, 21(2). 
+National Marine Fisheries Service (NMFS). 2024. Endangered Species Act Section 7(a)(2) Reinitiated Biological Opinion and Magnuson Stevens Fishery Conservation and Management Act Essential Fish Habitat (EFH) Response. NOAA’s National Marine Fisheries Service’s Continued Implementation of the Mitchell Act Final Environmental Impact Statement Preferred Alternative and Administration of Mitchell Act hatchery funding. December 30, 2024. NMFS Consultation No.: WCRO-2024-03014. 680p.
+
+Noble, M., P. Duncan, D. Perry, K. Prosper, D. Rose, S. Schnierer, G. Tipa, E. Williams, R. Woods, and J. Pittock. 2016. Culturally significant fisheries: keystones for management of freshwater social-ecological systems. Ecology and Society, 21(2).
 
 Paquet, P. J., T. Flagg, A. Appleby, J. Barr, L. Blankenship, D. Campton, M. Delarm, T. Evelyn, D. Fast, J. Gislason, P. Kline, D. Maynard, L. Mobrand, G. Nandor, P. Seidel, and S. Smith. 2011. Hatcheries, conservation, and sustainable fisheries - achieving multiple goals: 128 results of the Hatchery Scientific Review Group's Columbia River Basin review. Fisheries 36:547-561. 
 
@@ -827,6 +882,8 @@ AppendixB1 <- DF %>%
                 ifelse(gear=="spawning ground survey and trap","Stream Survey and Trap",gear))) %>%
   select(c(Pop,spawn_year,pHOS_ss_rw,pHOS_ss_rw_lower,pHOS_ss_rw_upper,
            pHOS_gam,pHOS_gam_lower,pHOS_gam_upper,pHOS_mom,NOS,HOS,gear))
+
+write.csv(AppendixB1, "AppendixB1.csv", row.names = F)
 
 flextable(AppendixB1) %>%
   set_header_labels(Pop = "Population", spawn_year = "Spawn Year",
